@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package proofs;
+
+service Proofs {
+  // RequestAggProof requests an aggregated proof for the given range
+  rpc RequestAggProof(AggProofRequest) returns (AggProofResponse);
+}
+
+message AggProofRequest {
+  int64 start = 1;
+  int64 end = 2;
+  int64 l1_block_number = 3;
+  bytes l1_block_hash = 4;
+}
+
+message AggProofResponse {
+  enum Status {
+    ACCEPTED = 0;
+    ALREADY_REQUESTED = 1;
+    ERROR = 2;
+  }
+  Status status = 1;
+  string request_id = 2;
+  string message = 3;
+}

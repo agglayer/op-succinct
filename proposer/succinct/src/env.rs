@@ -21,6 +21,7 @@ pub struct EnvironmentConfig {
     pub max_concurrent_proof_requests: u64,
     pub submission_interval: u64,
     pub mock: bool,
+    pub agglayer: bool,
 }
 
 /// Helper function to get environment variables with a default value and parse them.
@@ -89,6 +90,7 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         max_concurrent_proof_requests: get_env_var("MAX_CONCURRENT_PROOF_REQUESTS", Some(10))?,
         submission_interval: get_env_var("SUBMISSION_INTERVAL", Some(10))?,
         mock: get_env_var("OP_SUCCINCT_MOCK", Some(false))?,
+        agglayer: get_env_var("AGGLAYER", Some(false))?,
         loop_interval,
     };
 

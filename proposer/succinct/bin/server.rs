@@ -194,7 +194,7 @@ async fn request_span_proof(
     let proof_id = state
         .network_prover
         .prove(&state.range_pk, &sp1_stdin)
-        .compressed()
+        .mode(state.agg_proof_mode)
         .strategy(state.range_proof_strategy)
         .skip_simulation(true)
         .cycle_limit(1_000_000_000_000)

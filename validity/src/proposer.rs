@@ -88,6 +88,7 @@ where
             .await?;
 
         let network_prover = Arc::new(ProverClient::builder().network().build());
+        let mock_prover = Arc::new(ProverClient::builder().mock().build());
         let (range_pk, range_vk) = network_prover.setup(RANGE_ELF_EMBEDDED);
         let (agg_pk, agg_vk) = network_prover.setup(AGGREGATION_ELF);
         let multi_block_vkey_u8 = u32_to_u8(range_vk.vk.hash_u32());
@@ -113,6 +114,7 @@ where
         let proof_requester = Arc::new(OPSuccinctProofRequester::new(
             host,
             network_prover.clone(),
+            mock_prover,
             fetcher.clone(),
             db_client.clone(),
             program_config.clone(),

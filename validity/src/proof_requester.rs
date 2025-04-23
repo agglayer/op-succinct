@@ -6,10 +6,7 @@ use op_succinct_host_utils::{
     fetcher::OPSuccinctDataFetcher, get_agg_proof_stdin, get_proof_stdin, hosts::OPSuccinctHost,
     metrics::MetricsGauge, AGGREGATION_ELF, RANGE_ELF_EMBEDDED,
 };
-use sp1_sdk::{
-    network::{proto::network::ExecutionStatus, FulfillmentStrategy},
-    NetworkProver, SP1Proof, SP1ProofMode, SP1ProofWithPublicValues, SP1Stdin, SP1_CIRCUIT_VERSION,
-};
+use sp1_sdk::{network::{proto::network::ExecutionStatus, FulfillmentStrategy}, CpuProver, NetworkProver, SP1Proof, SP1ProofMode, SP1ProofWithPublicValues, SP1Stdin, SP1_CIRCUIT_VERSION};
 use std::{sync::Arc, time::Instant};
 use tracing::{info, warn};
 
@@ -22,6 +19,7 @@ use crate::{
 pub struct OPSuccinctProofRequester<H: OPSuccinctHost> {
     pub host: Arc<H>,
     pub network_prover: Arc<NetworkProver>,
+    pub mock_prover: Arc<CpuProver>,
     pub fetcher: Arc<OPSuccinctDataFetcher>,
     pub db_client: Arc<DriverDBClient>,
     pub program_config: ProgramConfig,
@@ -37,6 +35,7 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
     pub fn new(
         host: Arc<H>,
         network_prover: Arc<NetworkProver>,
+        mock_prover: Arc<CpuProver>,
         fetcher: Arc<OPSuccinctDataFetcher>,
         db_client: Arc<DriverDBClient>,
         program_config: ProgramConfig,
@@ -49,6 +48,7 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
         Self {
             host,
             network_prover,
+            mock_prover,
             fetcher,
             db_client,
             program_config,
@@ -200,10 +200,10 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
         );
 
         let start_time = Instant::now();
-        let network_prover = self.network_prover.clone();
+        let mock_prover = self.mock_prover.clone();
         // Move the CPU-intensive operation to a dedicated thread.
         let (pv, report) = match tokio::task::spawn_blocking(move || {
-            network_prover.execute(RANGE_ELF_EMBEDDED, &stdin).run()
+            mock_prover.execute(RANGE_ELF_EMBEDDED, &stdin).run()
         })
         .await?
         {
@@ -251,10 +251,10 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
         stdin: SP1Stdin,
     ) -> Result<SP1ProofWithPublicValues> {
         let start_time = Instant::now();
-        let network_prover = self.network_prover.clone();
+        let mock_prover = self.mock_prover.clone();
         // Move the CPU-intensive operation to a dedicated thread.
         let (pv, report) = match tokio::task::spawn_blocking(move || {
-            network_prover
+            mock_prover
                 .execute(AGGREGATION_ELF, &stdin)
                 .deferred_proof_verification(false)
                 .run()

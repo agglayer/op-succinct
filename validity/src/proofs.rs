@@ -155,10 +155,10 @@ where
             Ok(stdin) => stdin,
             Err(e) => {
                 ValidityGauge::WitnessgenErrorCount.increment(1.0);
-                return Err(Status::new(
-                    Code::Internal,
-                    format!("Failed to generate proof stdin: {}", e),
-                ));
+                return Err(Status::internal(format!(
+                    "Failed to generate proof stdin: {}",
+                    e
+                )));
             }
         };
         let duration = witnessgen_duration.elapsed();

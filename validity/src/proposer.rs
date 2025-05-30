@@ -45,7 +45,7 @@ where
     P: Provider + 'static,
 {
     pub driver_config: DriverConfig,
-    contract_config: ContractConfig<P, N>,
+    contract_config: ContractConfig<P>,
     program_config: ProgramConfig,
     requester_config: RequesterConfig,
     proof_requester: Arc<OPSuccinctProofRequester<H>>,

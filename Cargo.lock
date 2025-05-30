@@ -3955,15 +3955,16 @@ dependencies = [
 [[package]]
 name = "hana-blobstream"
 version = "0.1.0"
-source = "git+https://github.com/celestiaorg/hana?rev=a6077b794d1c00fc2af129fb28cbb0151f8c81b9#a6077b794d1c00fc2af129fb28cbb0151f8c81b9"
+source = "git+https://github.com/celestiaorg/hana?rev=904f086fd7335986e87a0f0432b1f07fe997f690#904f086fd7335986e87a0f0432b1f07fe997f690"
 dependencies = [
  "alloy-chains",
+ "alloy-consensus 0.15.10",
  "alloy-contract",
  "alloy-primitives",
  "alloy-rlp",
- "alloy-rpc-types-eth 0.15.10",
  "alloy-sol-types",
  "alloy-trie",
+ "anyhow",
  "bincode",
  "celestia-types",
  "serde",
@@ -3972,7 +3973,7 @@ dependencies = [
 [[package]]
 name = "hana-celestia"
 version = "0.1.0"
-source = "git+https://github.com/celestiaorg/hana?rev=a6077b794d1c00fc2af129fb28cbb0151f8c81b9#a6077b794d1c00fc2af129fb28cbb0151f8c81b9"
+source = "git+https://github.com/celestiaorg/hana?rev=904f086fd7335986e87a0f0432b1f07fe997f690#904f086fd7335986e87a0f0432b1f07fe997f690"
 dependencies = [
  "alloy-primitives",
  "async-trait",
@@ -3985,7 +3986,7 @@ dependencies = [
 [[package]]
 name = "hana-client"
 version = "0.1.0"
-source = "git+https://github.com/celestiaorg/hana?rev=a6077b794d1c00fc2af129fb28cbb0151f8c81b9#a6077b794d1c00fc2af129fb28cbb0151f8c81b9"
+source = "git+https://github.com/celestiaorg/hana?rev=904f086fd7335986e87a0f0432b1f07fe997f690#904f086fd7335986e87a0f0432b1f07fe997f690"
 dependencies = [
  "alloy-consensus 0.15.10",
  "alloy-evm",
@@ -4010,7 +4011,7 @@ dependencies = [
 [[package]]
 name = "hana-host"
 version = "0.1.0"
-source = "git+https://github.com/celestiaorg/hana?rev=a6077b794d1c00fc2af129fb28cbb0151f8c81b9#a6077b794d1c00fc2af129fb28cbb0151f8c81b9"
+source = "git+https://github.com/celestiaorg/hana?rev=904f086fd7335986e87a0f0432b1f07fe997f690#904f086fd7335986e87a0f0432b1f07fe997f690"
 dependencies = [
  "alloy-primitives",
  "alloy-provider",
@@ -4041,7 +4042,7 @@ dependencies = [
 [[package]]
 name = "hana-oracle"
 version = "0.1.0"
-source = "git+https://github.com/celestiaorg/hana?rev=a6077b794d1c00fc2af129fb28cbb0151f8c81b9#a6077b794d1c00fc2af129fb28cbb0151f8c81b9"
+source = "git+https://github.com/celestiaorg/hana?rev=904f086fd7335986e87a0f0432b1f07fe997f690#904f086fd7335986e87a0f0432b1f07fe997f690"
 dependencies = [
  "alloy-primitives",
  "async-trait",
@@ -4058,7 +4059,7 @@ dependencies = [
 [[package]]
 name = "hana-proofs"
 version = "0.1.0"
-source = "git+https://github.com/celestiaorg/hana?rev=a6077b794d1c00fc2af129fb28cbb0151f8c81b9#a6077b794d1c00fc2af129fb28cbb0151f8c81b9"
+source = "git+https://github.com/celestiaorg/hana?rev=904f086fd7335986e87a0f0432b1f07fe997f690#904f086fd7335986e87a0f0432b1f07fe997f690"
 dependencies = [
  "alloy-primitives",
  "alloy-provider",
@@ -7164,7 +7165,6 @@ version = "0.1.0"
 dependencies = [
  "alloy-contract",
  "alloy-eips 0.15.10",
- "alloy-network 0.15.10",
  "alloy-primitives",
  "alloy-provider",
  "alloy-rpc-types-eth 0.15.10",
@@ -7184,6 +7184,7 @@ dependencies = [
  "op-succinct-elfs",
  "op-succinct-host-utils",
  "op-succinct-proof-utils",
+ "op-succinct-signer-utils",
  "rand 0.9.1",
  "sp1-sdk",
  "strum 0.27.1",
@@ -7330,7 +7331,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "op-succinct-validity"
+name = "op-succinct-signer-utils"
 version = "0.1.0"
 dependencies = [
  "alloy-consensus 0.15.10",
@@ -7339,6 +7340,20 @@ dependencies = [
  "alloy-primitives",
  "alloy-provider",
  "alloy-rpc-types-eth 0.15.10",
+ "alloy-signer-local 0.15.10",
+ "alloy-transport-http",
+ "anyhow",
+ "op-succinct-host-utils",
+ "tokio",
+]
+
+[[package]]
+name = "op-succinct-validity"
+version = "0.1.0"
+dependencies = [
+ "alloy-eips 0.15.10",
+ "alloy-primitives",
+ "alloy-provider",
  "alloy-signer-local 0.15.10",
  "alloy-sol-types",
  "anyhow",
@@ -7354,6 +7369,7 @@ dependencies = [
  "op-succinct-grpc",
  "op-succinct-host-utils",
  "op-succinct-proof-utils",
+ "op-succinct-signer-utils",
  "prost",
  "reqwest",
  "rustls",
@@ -7370,7 +7386,6 @@ dependencies = [
  "tonic-build",
  "tracing",
  "tracing-subscriber 0.3.19",
- "url",
 ]
 
 [[package]]

@@ -2,7 +2,8 @@ use alloy_primitives::hex::FromHex;
 use alloy_primitives::FixedBytes;
 use bincode::Options;
 use tonic::{Code, Request, Response, Status};
-use tracing::{info, warn};
+use tracing::{info, warn, debug};
+use tracing_subscriber::field::debug;
 
 use crate::proof_requester::OPSuccinctProofRequester;
 use crate::OPSuccinctRequest;
@@ -79,6 +80,11 @@ where
 
         let req = request.into_inner();
 
+        debug!(
+            ?req,
+            "Processing AggProofRequest"
+        );
+
         let l1_limited_end_block = self
             .limit_l1_block_number(req.requested_end_block, req.l1_block_number)
             .await
@@ -109,6 +115,17 @@ where
             )
             .await
             .unwrap();
+
+        // Debug log for fetched range proofs
+        debug!(
+            ?range_proofs,
+            last_proven_block = req.last_proven_block,
+            requested_end_block = l1_limited_end_block,
+            commitments = ?self.program_config.commitments,
+            l1_chain_id = self.requester_config.l1_chain_id,
+            l2_chain_id = self.requester_config.l2_chain_id,
+            "Fetched consecutive range proofs"
+        );
 
         // Error in case there's no range proofs
         if range_proofs.is_empty() {

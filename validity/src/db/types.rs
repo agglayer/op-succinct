@@ -75,7 +75,7 @@ impl From<i16> for RequestMode {
     }
 }
 
-#[derive(FromRow, Default, Clone)]
+#[derive(FromRow, Default, Clone, Debug)]
 pub struct OPSuccinctRequest {
     pub id: i64,
     pub status: RequestStatus,

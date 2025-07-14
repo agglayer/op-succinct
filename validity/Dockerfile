@@ -5,7 +5,6 @@ FROM rust:1.85 AS builder
 RUN apt-get update && apt-get install -y \
     build-essential \
     libclang-dev \
-    llvm-dev \
     pkg-config \
     libssl-dev \
     git \
@@ -46,7 +45,6 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     git \
     libclang-dev \
-    llvm-dev \
     jq \
     && rm -rf /var/lib/apt/lists/*
 

@@ -7,11 +7,11 @@ use anyhow::Result;
 use clap::Parser;
 use fault_proof::{
     contract::DisputeGameFactory, prometheus::ProposerGauge, proposer::OPSuccinctProposer,
-    utils::setup_logging,
 };
 use op_succinct_host_utils::{
     fetcher::OPSuccinctDataFetcher,
     metrics::{init_metrics, MetricsGauge},
+    setup_logger,
 };
 use op_succinct_proof_utils::initialize_host;
 use op_succinct_signer_utils::Signer;
@@ -24,7 +24,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    setup_logging();
+    setup_logger();
 
     let args = Args::parse();
     dotenv::from_filename(args.env_file).ok();
@@ -51,10 +51,11 @@ async fn main() -> Result<()> {
 
     let fetcher = OPSuccinctDataFetcher::new_with_rollup_config().await?;
     let host = initialize_host(Arc::new(fetcher.clone()));
-    let proposer =
+    let proposer = Arc::new(
         OPSuccinctProposer::new(prover_address, proposer_signer, factory, Arc::new(fetcher), host)
             .await
-            .unwrap();
+            .unwrap(),
+    );
 
     // Initialize proposer gauges.
     ProposerGauge::register_all();

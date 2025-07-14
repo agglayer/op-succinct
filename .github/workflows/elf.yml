@@ -1,3 +1,5 @@
+# This workflow runs on all PRs, and ensures that the ELF files are built correctly.
+
 name: ELF
 
 on:
@@ -15,7 +17,8 @@ jobs:
       - runs-on
       - runner=64cpu-linux-x64
       - run-id=${{ github.run_id }}
-      
+      - spot=false
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

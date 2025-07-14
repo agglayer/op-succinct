@@ -7344,6 +7344,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "op-succinct-grpc"
+version = "0.1.0"
+source = "git+https://github.com/agglayer/op-succinct-grpc?branch=main#ac519a1cb16e566b3e49ccae5cbe1a9959a70118"
+dependencies = [
+ "bincode",
+ "bytes",
+ "pbjson",
+ "pbjson-types",
+ "prost 0.13.5",
+ "serde",
+ "tonic 0.12.3",
+ "tonic-build",
+ "tracing",
+]
+
+[[package]]
 name = "op-succinct-host-utils"
 version = "3.0.0-rc.1"
 dependencies = [
@@ -7515,6 +7531,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry-stdout",
  "opentelemetry_sdk 0.23.0",
+ "prost 0.13.5",
  "reqwest 0.12.18",
  "rustls",
  "serde",
@@ -7526,7 +7543,7 @@ dependencies = [
  "strum_macros 0.27.1",
  "tikv-jemallocator",
  "tokio",
- "tonic",
+ "tonic 0.12.3",
  "tonic-build",
  "tracing",
  "tracing-opentelemetry",
@@ -8140,7 +8157,7 @@ checksum = "6eea3058763d6e656105d1403cb04e0a41b7bbac6362d413e7c33be0c32279c9"
 dependencies = [
  "heck 0.5.0",
  "itertools 0.13.0",
- "prost",
+ "prost 0.13.5",
  "prost-types",
 ]
 
@@ -8154,7 +8171,7 @@ dependencies = [
  "chrono",
  "pbjson",
  "pbjson-build",
- "prost",
+ "prost 0.13.5",
  "prost-build",
  "serde",
 ]
@@ -11884,6 +11901,16 @@ dependencies = [
  "tracing-log",
  "tracing-subscriber 0.3.19",
  "web-time",
+]
+
+[[package]]
+name = "tracing-serde"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "704b1aeb7be0d0a84fc9828cae51dab5970fee5088f83d1dd7ee6f6246fc6ff1"
+dependencies = [
+ "serde",
+ "tracing-core",
 ]
 
 [[package]]

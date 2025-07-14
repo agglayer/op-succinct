@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.15;
+pragma solidity ^0.8.15;
 
 // Libraries
 import {Clone} from "@solady/utils/Clone.sol";
@@ -30,7 +30,7 @@ import {
     UnexpectedRootClaim
 } from "src/dispute/lib/Errors.sol";
 import "src/fp/lib/Errors.sol";
-import {AggregationOutputs} from "src/lib/Types.sol";
+import {AggregationOutputs, OP_SUCCINCT_FAULT_DISPUTE_GAME_TYPE} from "src/lib/Types.sol";
 
 // Interfaces
 import {ISemver} from "interfaces/universal/ISemver.sol";
@@ -188,7 +188,7 @@ contract OPSuccinctFaultDisputeGame is Clone, ISemver, IDisputeGame {
         AccessManager _accessManager
     ) {
         // Set up initial game state.
-        GAME_TYPE = GameType.wrap(42);
+        GAME_TYPE = GameType.wrap(OP_SUCCINCT_FAULT_DISPUTE_GAME_TYPE);
         MAX_CHALLENGE_DURATION = _maxChallengeDuration;
         MAX_PROVE_DURATION = _maxProveDuration;
         DISPUTE_GAME_FACTORY = _disputeGameFactory;

@@ -27,6 +27,7 @@ pub struct EnvironmentConfig {
     pub mock: bool,
     pub agglayer: bool,
     pub safe_db_fallback: bool,
+    pub op_succinct_config_name: String,
     pub grpc_addr: String,
     pub log_format: String,
 }
@@ -118,6 +119,10 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         mock: get_env_var("OP_SUCCINCT_MOCK", Some(false))?,
         loop_interval,
         safe_db_fallback: get_env_var("SAFE_DB_FALLBACK", Some(false))?,
+        op_succinct_config_name: get_env_var(
+            "OP_SUCCINCT_CONFIG_NAME",
+            Some("opsuccinct_genesis".to_string()),
+        )?,
         agglayer: get_env_var("AGGLAYER", Some(false))?,
         grpc_addr: get_env_var("GRPC_ADDRESS", Some("[::1]:50051".to_string()))?,
         log_format: get_env_var("LOG_FORMAT", Some("pretty".to_string()))?,

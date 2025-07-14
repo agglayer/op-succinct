@@ -3,11 +3,11 @@ use anyhow::Result;
 use op_succinct_host_utils::{
     fetcher::OPSuccinctDataFetcher,
     metrics::{init_metrics, MetricsGauge},
+    setup_logger,
 };
 use op_succinct_proof_utils::initialize_host;
 use op_succinct_validity::{
-    read_proposer_env, setup_logger_with_format, DriverDBClient, Proposer, RequesterConfig,
-    ValidityGauge,
+    read_proposer_env, DriverDBClient, Proposer, RequesterConfig, ValidityGauge,
 };
 use std::sync::Arc;
 use tikv_jemallocator::Jemalloc;
@@ -37,15 +37,15 @@ async fn main() -> Result<()> {
 
     dotenv::from_filename(args.env_file).ok();
 
-    // Read the environment variables first to get the log format
-    let env_config = read_proposer_env()?;
-
-    // Setup logger with the configured format
-    setup_logger_with_format(&env_config.log_format);
+    setup_logger();
 
     let fetcher = OPSuccinctDataFetcher::new_with_rollup_config().await?;
 
     let db_client = Arc::new(DriverDBClient::new(&env_config.db_url).await?);
+
+    let op_succinct_config_name_hash =
+        alloy_primitives::keccak256(env_config.op_succinct_config_name.as_bytes());
+
     let proposer_config = RequesterConfig {
         l1_chain_id: fetcher.l1_provider.get_chain_id().await? as i64,
         l2_chain_id: fetcher.l2_provider.get_chain_id().await? as i64,
@@ -61,6 +61,7 @@ async fn main() -> Result<()> {
         mock: env_config.mock,
         prover_address: env_config.prover_address,
         safe_db_fallback: env_config.safe_db_fallback,
+        op_succinct_config_name_hash,
         grpc_addr: env_config.grpc_addr,
     };
 

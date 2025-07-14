@@ -98,16 +98,35 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
         prover_address: Address,
     ) -> Result<SP1Stdin> {
         // Fetch consecutive range proofs from the database.
-        let range_proofs = self
-            .db_client
-            .get_consecutive_complete_range_proofs(
-                start_block,
-                end_block,
-                &self.program_config.commitments,
-                l1_chain_id,
-                l2_chain_id,
-            )
-            .await?;
+        let range_proofs = if self.program_config.gas_threshold > 0 {
+            debug!(
+                "Using gas threshold strategy: threshold = {}, start_block = {}",
+                self.program_config.gas_threshold, start_block
+            );
+            self.db_client
+                .get_range_proofs_until_gas_threshold(
+                    start_block,
+                    self.program_config.gas_threshold,
+                    &self.program_config.commitments,
+                    l1_chain_id,
+                    l2_chain_id,
+                )
+                .await?
+        } else {
+            debug!(
+                "Using traditional range strategy: start_block = {}, end_block = {}",
+                start_block, end_block
+            );
+            self.db_client
+                .get_consecutive_complete_range_proofs(
+                    start_block,
+                    end_block,
+                    &self.program_config.commitments,
+                    l1_chain_id,
+                    l2_chain_id,
+                )
+                .await?
+        };
 
         // Deserialize the proofs and extract the boot infos and proofs.
         let (boot_infos, proofs): (Vec<BootInfoStruct>, Vec<SP1Proof>) = range_proofs

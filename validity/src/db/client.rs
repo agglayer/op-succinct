@@ -296,6 +296,93 @@ impl DriverDBClient {
         Ok(requests)
     }
 
+    /// Fetch all range proofs until the gas threshold is reached.
+    pub async fn get_range_proofs_until_gas_threshold(
+        &self,
+        start_block: i64,
+        gas_threshold: u64,
+        commitments: &ProgramCommitments,
+        l1_chain_id: i64,
+        l2_chain_id: i64,
+    ) -> Result<Vec<OPSuccinctRequest>, Error> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT
+                id,
+                start_block,
+                end_block,
+                mode,
+                req_type,
+                status,
+                created_at,
+                updated_at,
+                checkpointed_l1_block_hash,
+                checkpointed_l1_block_number,
+                l1_chain_id,
+                l2_chain_id,
+                contract_address,
+                proof,
+                proof_request_id,
+                range_vkey_commitment,
+                rollup_config_hash,
+                total_eth_gas_used
+            FROM requests
+            WHERE req_type = $1
+              AND status = $2
+              AND start_block >= $3
+              AND l1_chain_id = $4
+              AND l2_chain_id = $5
+              AND range_vkey_commitment = $6
+              AND rollup_config_hash = $7
+            ORDER BY start_block ASC
+            "#,
+            RequestType::Range as i16,
+            RequestStatus::Complete as i16,
+            start_block,
+            l1_chain_id,
+            l2_chain_id,
+            commitments.range_vkey_commitment.as_ref(),
+            commitments.rollup_config_hash.as_ref(),
+        )
+        .fetch_all(&self.pool)
+        .await?;
+    
+        let mut accumulated_gas = 0_u64;
+        let mut selected = Vec::new();
+    
+        for row in rows {
+            let gas = row.total_eth_gas_used.unwrap_or(0) as u64;
+            if accumulated_gas + gas > gas_threshold {
+                break;
+            }
+    
+            accumulated_gas += gas;
+    
+            selected.push(OPSuccinctRequest {
+                id: row.id,
+                start_block: row.start_block,
+                end_block: row.end_block,
+                mode: row.mode,
+                req_type: RequestType::Range,
+                l1_chain_id: row.l1_chain_id,
+                l2_chain_id: row.l2_chain_id,
+                checkpointed_l1_block_number: row.checkpointed_l1_block_number,
+                checkpointed_l1_block_hash: row.checkpointed_l1_block_hash.map(|v| v.into()),
+                contract_address: row.contract_address.map(|v| v.into()),
+                proof: row.proof,
+                proof_request_id: row.proof_request_id,
+                range_vkey_commitment: row.range_vkey_commitment,
+                rollup_config_hash: row.rollup_config_hash,
+                total_eth_gas_used: Some(gas as i64),
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+                ..Default::default()
+            });
+        }
+    
+        Ok(selected)
+    }
+    
     /// Fetch the checkpointed block hash and number for an aggregation request with the same start
     /// block, end block, and commitment config.
     pub async fn fetch_failed_agg_request_with_checkpointed_block_hash(

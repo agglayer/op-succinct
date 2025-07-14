@@ -106,6 +106,17 @@ where
         // Initialize fetcher
         let rollup_config_hash = hash_rollup_config(fetcher.rollup_config.as_ref().unwrap());
 
+        let gas_threshold = env::var("GAS_THRESHOLD")
+        .unwrap_or_else(|_| "0".to_string()) // Default value is 0, which means no gas threshold
+        .parse::<u64>()
+        .expect("Invalid GAS_THRESHOLD");
+
+        if gas_threshold > 0 {
+            info!("Aggregation strategy: using gas threshold of {}", gas_threshold);
+        } else {
+            info!("Aggregation strategy: using block range [start_block, end_block]");
+        }
+
         let program_config = ProgramConfig {
             range_vk: Arc::new(range_vk),
             range_pk: Arc::new(range_pk),
@@ -116,6 +127,7 @@ where
                 agg_vkey_hash,
                 rollup_config_hash,
             },
+            gas_threshold,
         };
 
         // Initialize the proof requester.

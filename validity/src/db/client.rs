@@ -301,12 +301,12 @@ impl DriverDBClient {
         &self,
         start_block: i64,
         gas_threshold: u64,
-        commitments: &CommitmentConfig,
+        commitment: &CommitmentConfig,
         l1_chain_id: i64,
         l2_chain_id: i64,
     ) -> Result<Vec<OPSuccinctRequest>, Error> {
-        let requests = sqlx::query_as!(
-            OPSuccinctRequest,
+        // Use dynamic query (safe for SQLX_OFFLINE and CI environments)
+        let rows = sqlx::query_as::<_, OPSuccinctRequest>(
             r#"
             SELECT * FROM requests
             WHERE req_type = $1
@@ -317,23 +317,24 @@ impl DriverDBClient {
               AND range_vkey_commitment = $6
               AND rollup_config_hash = $7
             ORDER BY start_block ASC
-            "#,
-            RequestType::Range as i16,
-            RequestStatus::Complete as i16,
-            start_block,
-            l1_chain_id,
-            l2_chain_id,
-            &commitments.range_vkey_commitment[..],
-            &commitments.rollup_config_hash[..],
+            "#
         )
+        .bind(RequestType::Range as i16)
+        .bind(RequestStatus::Complete as i16)
+        .bind(start_block)
+        .bind(l1_chain_id)
+        .bind(l2_chain_id)
+        .bind(&commitment.range_vkey_commitment[..])
+        .bind(&commitment.rollup_config_hash[..])
         .fetch_all(&self.pool)
         .await?;
     
+        // Filter until the accumulated gas threshold is reached
         let mut accumulated_gas = 0_u64;
         let mut selected = Vec::new();
     
-        for req in requests {
-            let gas = req.total_eth_gas_used.unwrap_or(0) as u64;
+        for req in rows {
+            let gas = req.total_eth_gas_used as u64;
             if accumulated_gas + gas > gas_threshold {
                 break;
             }
@@ -343,7 +344,6 @@ impl DriverDBClient {
     
         Ok(selected)
     }
-    
     
     /// Fetch the checkpointed block hash and number for an aggregation request with the same start
     /// block, end block, and commitment config.

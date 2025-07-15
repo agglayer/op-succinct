@@ -2,12 +2,14 @@ use alloy_eips::BlockId;
 use anyhow::Result;
 use op_succinct_host_utils::fetcher::{OPSuccinctDataFetcher, RPCMode};
 use op_succinct_scripts::config_common::{
-    find_project_root, get_address, get_shared_config_data, get_workspace_root, write_config_file,
-    TWO_WEEKS_IN_SECONDS,
+    get_address, get_shared_config_data, TWO_WEEKS_IN_SECONDS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::env;
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -48,7 +50,6 @@ struct L2OOConfig {
 async fn update_l2oo_config(output_dir: &Path) -> Result<()> {
     let data_fetcher = OPSuccinctDataFetcher::new_with_rollup_config().await?;
     let shared_config = get_shared_config_data().await?;
-    let workspace_root = get_workspace_root()?;
 
     let rollup_config = data_fetcher.rollup_config.as_ref().unwrap();
     let l2_block_time = rollup_config.block_time;
@@ -113,9 +114,20 @@ async fn update_l2oo_config(output_dir: &Path) -> Result<()> {
         op_succinct_l2_output_oracle_impl,
     };
 
-    let config_path = workspace_root.join("contracts/opsuccinctl2ooconfig.json");
-    write_config_file(&l2oo_config, &config_path, "L2 Output Oracle")?;
+    write_l2oo_config(l2oo_config, output_dir)?;
 
+    Ok(())
+}
+
+/// Write the L2OO rollup config to `contracts/opsuccinctl2ooconfig.json`.
+fn write_l2oo_config(config: L2OOConfig, output_dir: &Path) -> Result<()> {
+    let opsuccinct_config_path = output_dir.join("opsuccinctl2ooconfig.json");
+    // Create parent directories if they don't exist
+    if let Some(parent) = opsuccinct_config_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    // Write the L2OO rollup config to the opsuccinctl2ooconfig.json file
+    fs::write(&opsuccinct_config_path, serde_json::to_string_pretty(&config)?)?;
     Ok(())
 }
 

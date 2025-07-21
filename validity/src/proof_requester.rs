@@ -223,6 +223,7 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
             start_block = request.start_block,
             end_block = request.end_block,
             duration_s = execution_duration,
+            report = ?report,
             "Executed mock range proof.",
         );
 

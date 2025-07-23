@@ -100,15 +100,15 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
         
         // Fetch consecutive range proofs from the database.
         let range_proofs = self
-        .db_client
-        .get_consecutive_complete_range_proofs(
-            start_block,
-            end_block,
-            &self.program_config.commitments,
-            l1_chain_id,
-            l2_chain_id,
-        )
-        .await?;
+            .db_client
+            .get_consecutive_complete_range_proofs(
+                start_block,
+                end_block,
+                &self.program_config.commitments,
+                l1_chain_id,
+                l2_chain_id,
+            )
+            .await?;
 
         // Deserialize the proofs and extract the boot infos and proofs.
         let (boot_infos, proofs): (Vec<BootInfoStruct>, Vec<SP1Proof>) = range_proofs

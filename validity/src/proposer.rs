@@ -27,6 +27,7 @@ use crate::{
     db::{DriverDBClient, OPSuccinctRequest, RequestMode, RequestStatus},
     find_gaps, get_latest_proposed_block_number, get_ranges_to_prove, CommitmentConfig,
     ContractConfig, OPSuccinctProofRequester, ProgramConfig, RequesterConfig, ValidityGauge,
+    RequestType,
 };
 
 /// Configuration for the driver.
@@ -175,68 +176,79 @@ where
     /// Use the in-memory index of the highest block number to add new ranges to the database.
     #[tracing::instrument(name = "proposer.add_new_ranges", skip(self))]
     pub async fn add_new_ranges(&self) -> Result<()> {
-        let latest_block_number = self
+        let start = Instant::now();
+
+        let db_client = &self.driver_config.driver_db_client;
+        let commitment = &self.program_config.commitments;
+        let l1_chain_id = self.program_config.commitments.l1_chain_id;
+        let l2_chain_id = self.program_config.commitments.l2_chain_id;
+
+        let latest_l2_block = self
             .driver_config
-            .driver_db_client
-            .get_latest_end_block(RequestType::Range)
-            .await?
-            .unwrap_or(self.program_config.first_block_number);
-    
-        let latest_l2_block = self.driver_config.l2_node_reader.get_l2_block_number().await?;
-        let start_block = latest_block_number;
-        let end_block = latest_l2_block + 1;
-    
-        if start_block >= end_block {
-            debug!(
-                "No new blocks to process: start_block = {}, end_block = {}",
-                start_block, end_block
-            );
-            return Ok(());
-        }
-    
-        let range_vkey_commitment = self.program_config.range_vkey_commitment;
-        let rollup_config_hash = self.program_config.rollup_config_hash;
-        let mode = self.program_config.mode;
-        let l1_chain_id = self.program_config.l1_chain_id;
-        let l2_chain_id = self.program_config.l2_chain_id;
-    
-        let new_range_requests = if self.program_config.gas_threshold > 0 {
-            debug!(
-                "Using gas threshold strategy: threshold = {}, start = {}, end = {}",
-                self.program_config.gas_threshold, start_block, end_block
-            );
-    
-            OPSuccinctRequest::create_range_requests_respecting_gas_threshold(
-                mode,
-                start_block,
-                end_block,
-                self.program_config.gas_threshold,
-                range_vkey_commitment,
-                rollup_config_hash,
-                l1_chain_id,
-                l2_chain_id,
-                self.driver_config.fetcher.clone(),
-            )
-            .await?
-        } else {
-            vec![OPSuccinctRequest::create_range_request(
-                mode,
-                start_block,
-                end_block,
-                range_vkey_commitment,
-                rollup_config_hash,
-                l1_chain_id,
-                l2_chain_id,
-                self.driver_config.fetcher.clone(),
-            )
-            .await?]
-        };
-    
-        self.driver_config
-            .driver_db_client
-            .insert_requests(&new_range_requests)
+            .fetcher
+            .get_l2_block_number()
             .await?;
-    
+
+        if let Some(gas_threshold) = self.program_config.gas_threshold {
+            // GAS_THRESHOLD logic
+            let latest_block_number = db_client
+                .get_max_end_block()
+                .await?
+                .unwrap_or(0);
+
+            let range_requests = OPSuccinctRequest::create_range_requests_respecting_gas_threshold(
+                latest_block_number,
+                latest_l2_block,
+                commitment.range_vkey_commitment.clone(),
+                commitment.rollup_config_hash.clone(),
+                RequestMode::Range,
+                l1_chain_id,
+                l2_chain_id,
+                gas_threshold.try_into().unwrap(), // Convert u64 to i64 safely
+            );
+
+            for req in range_requests {
+                db_client.insert_request(&req).await?;
+            }
+        } else {
+            // Classic block-based logic
+            let latest_block_number = db_client
+                .fetch_highest_end_block_for_range_request(
+                    &[RequestStatus::Unrequested, RequestStatus::Complete],
+                    commitment,
+                    l1_chain_id,
+                    l2_chain_id,
+                )
+                .await?
+                .unwrap_or(0);
+
+            let ranges = get_ranges_to_prove(
+                latest_block_number,
+                latest_l2_block,
+                self.program_config.mode,
+                self.program_config.commitments.range_vkey_commitment.clone(),
+            );
+
+            let range_requests: Vec<OPSuccinctRequest> = ranges
+                .into_iter()
+                .map(|(start, end)| OPSuccinctRequest::new_range_request(
+                    start,
+                    end,
+                    self.program_config.commitments.range_vkey_commitment.clone(),
+                    self.program_config.commitments.rollup_config_hash.clone(),
+                    RequestMode::Range,
+                    l1_chain_id,
+                    l2_chain_id,
+                ))
+                .collect();
+
+            for req in range_requests {
+                db_client.insert_request(&req).await?;
+            }
+        }
+
+        tracing::info!("Added new range requests in {:?}", start.elapsed());
+
         Ok(())
     }
 

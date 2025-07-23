@@ -22,6 +22,21 @@ impl DriverDBClient {
         Ok(DriverDBClient { pool })
     }
 
+    /// Retrieves the highest `end_block` value among all range requests in the database.
+    pub async fn get_max_end_block(&self) -> Result<Option<i64>> {
+        // Query the database to get the maximum end_block for requests of type 'Range'.
+        let row: Option<(i64,)> = sqlx::query_as(
+            "SELECT MAX(end_block) FROM requests WHERE req_type = $1"
+        )
+        .bind(RequestType::Range as i16) // We use the enum's integer representation
+        .fetch_optional(&self.pool) // Execute the query on the connection pool
+        .await?;
+
+        // Return the result, mapping the tuple (i64,) to just i64
+        Ok(row.map(|r| r.0))
+    }
+
+
     /// Adds a chain lock to the database.
     pub async fn add_chain_lock(
         &self,

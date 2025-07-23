@@ -239,48 +239,46 @@ where
             info!("Inserting {} range proof requests into the database.", ranges_to_prove.len());
 
             // Create range proof requests for the ranges to prove in parallel
-            let new_requests = if self.program_config.gas_threshold > 0 {
-                // Use gas-threshold-aware batching if a threshold is defined
+            if self.program_config.gas_threshold > 0 {
+                debug!(
+                    "Using gas threshold strategy: threshold = {}, start = {}, end = {}",
+                    self.program_config.gas_threshold, start_block, end_block
+                );
+            
                 OPSuccinctRequest::create_range_requests_respecting_gas_threshold(
-                    request.mode,
-                    request.start_block,
-                    request.end_block,
-                    self.program_config.gas_threshold,
+                    mode,
+                    start_block,
+                    end_block,
+                    self.program_config
+                        .gas_threshold
+                        .try_into()
+                        .expect("gas_threshold must fit into i64"),
                     self.program_config.commitments.range_vkey_commitment,
                     self.program_config.commitments.rollup_config_hash,
-                    l1_chain_id as i64,
-                    l2_chain_id as i64,
-                    self.fetcher.clone(),
+                    l1_chain_id,
+                    l2_chain_id,
+                    self.proof_requester.fetcher.clone(),
                 )
                 .await?
             } else {
-                // Fallback: split manually into two range requests
-                vec![
-                    OPSuccinctRequest::create_range_request(
-                        request.mode,
-                        request.start_block,
-                        mid_block,
-                        self.program_config.commitments.range_vkey_commitment,
-                        self.program_config.commitments.rollup_config_hash,
-                        l1_chain_id as i64,
-                        l2_chain_id as i64,
-                        self.fetcher.clone(),
-                    )
-                    .await?,
-                    OPSuccinctRequest::create_range_request(
-                        request.mode,
-                        mid_block,
-                        request.end_block,
-                        self.program_config.commitments.range_vkey_commitment,
-                        self.program_config.commitments.rollup_config_hash,
-                        l1_chain_id as i64,
-                        l2_chain_id as i64,
-                        self.fetcher.clone(),
-                    )
-                    .await?,
-                ]
-            };
-
+                debug!(
+                    "Using legacy range request strategy: start = {}, end = {}",
+                    start_block, end_block
+                );
+            
+                vec![OPSuccinctRequest::create_range_request(
+                    mode,
+                    start_block,
+                    end_block,
+                    self.program_config.commitments.range_vkey_commitment,
+                    self.program_config.commitments.rollup_config_hash,
+                    l1_chain_id,
+                    l2_chain_id,
+                    self.proof_requester.fetcher.clone(),
+                )
+                .await?]
+            }
+            
             // Insert the new range proof requests into the database.
             self.driver_config.driver_db_client.insert_requests(&new_range_requests).await?;
         }

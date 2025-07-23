@@ -296,55 +296,6 @@ impl DriverDBClient {
         Ok(requests)
     }
 
-    /// Fetch all range proofs until the gas threshold is reached.
-    pub async fn get_range_proofs_until_gas_threshold(
-        &self,
-        start_block: i64,
-        gas_threshold: u64,
-        commitment: &CommitmentConfig,
-        l1_chain_id: i64,
-        l2_chain_id: i64,
-    ) -> Result<Vec<OPSuccinctRequest>, Error> {
-        // Use dynamic query (safe for SQLX_OFFLINE and CI environments)
-        let rows = sqlx::query_as::<_, OPSuccinctRequest>(
-            r#"
-            SELECT * FROM requests
-            WHERE req_type = $1
-              AND status = $2
-              AND start_block >= $3
-              AND l1_chain_id = $4
-              AND l2_chain_id = $5
-              AND range_vkey_commitment = $6
-              AND rollup_config_hash = $7
-            ORDER BY start_block ASC
-            "#
-        )
-        .bind(RequestType::Range as i16)
-        .bind(RequestStatus::Complete as i16)
-        .bind(start_block)
-        .bind(l1_chain_id)
-        .bind(l2_chain_id)
-        .bind(&commitment.range_vkey_commitment[..])
-        .bind(&commitment.rollup_config_hash[..])
-        .fetch_all(&self.pool)
-        .await?;
-    
-        // Filter until the accumulated gas threshold is reached
-        let mut accumulated_gas = 0_u64;
-        let mut selected = Vec::new();
-    
-        for req in rows {
-            let gas = req.total_eth_gas_used as u64;
-            if accumulated_gas + gas > gas_threshold {
-                break;
-            }
-            accumulated_gas += gas;
-            selected.push(req);
-        }
-    
-        Ok(selected)
-    }
-    
     /// Fetch the checkpointed block hash and number for an aggregation request with the same start
     /// block, end block, and commitment config.
     pub async fn fetch_failed_agg_request_with_checkpointed_block_hash(

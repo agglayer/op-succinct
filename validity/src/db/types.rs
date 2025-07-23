@@ -175,7 +175,7 @@ impl OPSuccinctRequest {
             if current_gas > 0 && next_gas_total > gas_threshold {
                 let batch_end = current_batch
                     .last()
-                    .map(|b| b.block_number)
+                    .map(|b: &L2BlockData| b.block_number)
                     .unwrap_or(batch_start.unwrap());
     
                 let request = OPSuccinctRequest::new_range_request(
@@ -207,7 +207,7 @@ impl OPSuccinctRequest {
             let batch_start = batch_start.unwrap();
             let batch_end = current_batch
                 .last()
-                .map(|b| b.block_number)
+                .map(|b: &L2BlockData| b.block_number)
                 .unwrap_or(batch_start);
     
             let request = OPSuccinctRequest::new_range_request(

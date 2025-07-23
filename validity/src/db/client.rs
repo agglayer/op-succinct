@@ -23,17 +23,15 @@ impl DriverDBClient {
     }
 
     /// Retrieves the highest `end_block` value among all range requests in the database.
-    pub async fn get_max_end_block(&self) -> Result<Option<i64>> {
-        // Query the database to get the maximum end_block for requests of type 'Range'.
+    pub async fn get_max_end_block(&self) -> Result<i64> {
         let row: Option<(i64,)> = sqlx::query_as(
             "SELECT MAX(end_block) FROM requests WHERE req_type = $1"
         )
-        .bind(RequestType::Range as i16) // Ensure the enum maps to the DB type (usually SMALLINT)
+        .bind(RequestType::Range as i16)
         .fetch_optional(&self.pool)
         .await?;
     
-        // Return the result as Option<i64>
-        Ok(row.map(|r| r.0))
+        Ok(row.map(|r| r.0).unwrap_or(0))
     }
 
     /// Adds a chain lock to the database.

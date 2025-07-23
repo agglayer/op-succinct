@@ -5,7 +5,6 @@ use op_succinct_host_utils::fetcher::{BlockInfo, OPSuccinctDataFetcher};
 use serde_json::Value;
 use sqlx::{types::BigDecimal, FromRow, PgPool};
 use std::{fmt::Debug, sync::Arc};
-use crate::db::types::BlockInfo;
 
 #[derive(sqlx::Type, Debug, Copy, Clone, PartialEq, Eq, Default)]
 #[sqlx(type_name = "smallint")]

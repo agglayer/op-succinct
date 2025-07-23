@@ -253,6 +253,7 @@ where
                     .driver_db_client
                     .get_max_end_block()
                     .await?
+                    .unwrap_or(0)
             } else {
                 0 // not used
             };

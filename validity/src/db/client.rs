@@ -31,7 +31,7 @@ impl DriverDBClient {
         .fetch_optional(&self.pool)
         .await?;
     
-        Ok(row.map(|r| r.0).unwrap_or(0))
+        Ok(row.and_then(|r| r.0))
     }
 
     /// Adds a chain lock to the database.

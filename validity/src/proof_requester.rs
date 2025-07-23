@@ -468,26 +468,27 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
 
     /// Generates the stdin needed for a proof.
     pub async fn generate_proof_stdin(&self, request: &OPSuccinctRequest) -> Result<SP1Stdin> {
-        let stdin = match request.req_type {
-            RequestType::Range => self.range_proof_witnessgen(request).await?,
+        match request.req_type {
+            RequestType::Range => {
+                self.range_proof_witnessgen(request).await
+            },
             RequestType::Aggregation => {
+                // Validaciones previas
+                let block_hash = request.checkpointed_l1_block_hash.as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("Aggregation proof has no checkpointed block."))?;
+                let prover_address = request.prover_address.as_ref()
+                    .ok_or_else(|| anyhow::anyhow!("Prover address must be set for aggregation proofs."))?;
+    
                 self.agg_proof_witnessgen(
                     request.start_block,
                     request.end_block,
-                    B256::from_slice(request.checkpointed_l1_block_hash.as_ref().ok_or_else(
-                        || anyhow::anyhow!("Aggregation proof has no checkpointed block."),
-                    )?),
+                    B256::from_slice(block_hash),
                     request.l1_chain_id,
                     request.l2_chain_id,
-                    Address::from_slice(request.prover_address.as_ref().ok_or_else(|| {
-                        anyhow::anyhow!("Prover address must be set for aggregation proofs.")
-                    })?),
-                )
-                .await?
+                    Address::from_slice(prover_address),
+                ).await
             }
-        };
-
-        Ok(stdin)
+        }
     }
 
     /// Makes a proof request by updating statuses, generating witnesses, and then either requesting

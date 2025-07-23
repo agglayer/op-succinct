@@ -249,8 +249,26 @@ where
             let l1_chain_id = self.requester_config.l1_chain_id;
             let l2_chain_id = self.requester_config.l2_chain_id;
             let mut new_range_requests = Vec::new();
+
+            let last_used_block = if self.program_config.gas_threshold > 0 {
+                self.driver_config
+                    .driver_db_client
+                    .get_max_end_block()
+                    .await?
+                    .unwrap_or(self.program_config.first_block_number.unwrap_or(0))
+            } else {
+                0 // not used
+            };
         
             for (start_block, end_block) in ranges_to_prove {
+                if start_block < last_used_block {
+                    debug!(
+                        "Skipping already covered range: start = {}, last_used_block = {}",
+                        start_block, last_used_block
+                    );
+                    continue;
+                }
+                
                 // If gas threshold is set, use the gas-aware strategy
                 if self.program_config.gas_threshold > 0 {
                     debug!(

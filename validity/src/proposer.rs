@@ -5,7 +5,7 @@ use alloy_primitives::{Address, Bytes, B256, U256};
 use alloy_provider::{network::ReceiptResponse, Provider};
 use alloy_sol_types::SolValue;
 use anyhow::{anyhow, Context, Result};
-use futures_util::{stream, StreamExt, TryStreamExt};
+use futures_util::TryStreamExt;
 use op_succinct_client_utils::{boot::hash_rollup_config, types::u32_to_u8};
 use op_succinct_elfs::AGGREGATION_ELF;
 use op_succinct_grpc::proofs::proofs_server::ProofsServer;

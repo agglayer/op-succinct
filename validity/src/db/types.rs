@@ -156,26 +156,26 @@ impl OPSuccinctRequest {
     ) -> Result<Vec<Self>> {
         let block_data =
             fetcher.get_l2_block_data_range(start_block as u64, end_block as u64).await?;
-
+    
         let mut requests = Vec::new();
         let mut current_batch = Vec::new();
         let mut current_gas = 0;
         let mut batch_start = None;
-
+    
         for block in block_data {
             if current_batch.is_empty() {
-                batch_start = Some(block.number);
+                batch_start = Some(block.block_number);
             }
-
+    
             current_gas += block.gas_used as i64;
             current_batch.push(block);
-
+    
             if current_gas >= gas_threshold {
                 let batch_end = current_batch
                     .last()
-                    .map(|b| b.number)
+                    .map(|b| b.block_number)
                     .unwrap_or(batch_start.unwrap());
-
+    
                 let request = OPSuccinctRequest::new_range_request(
                     mode,
                     batch_start.unwrap() as i64,
@@ -186,23 +186,23 @@ impl OPSuccinctRequest {
                     l1_chain_id,
                     l2_chain_id,
                 );
-
+    
                 requests.push(request);
-
+    
                 current_batch.clear();
                 current_gas = 0;
                 batch_start = None;
             }
         }
-
+    
         // Push remaining batch if any
         if !current_batch.is_empty() {
             let batch_start = batch_start.unwrap();
             let batch_end = current_batch
                 .last()
-                .map(|b| b.number)
+                .map(|b| b.block_number)
                 .unwrap_or(batch_start);
-
+    
             let request = OPSuccinctRequest::new_range_request(
                 mode,
                 batch_start as i64,
@@ -213,12 +213,13 @@ impl OPSuccinctRequest {
                 l1_chain_id,
                 l2_chain_id,
             );
-
+    
             requests.push(request);
         }
-
+    
         Ok(requests)
     }
+    
     
     /// Create a new range request given the block data.
     #[allow(clippy::too_many_arguments)]

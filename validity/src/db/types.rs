@@ -5,6 +5,7 @@ use op_succinct_host_utils::fetcher::{BlockInfo, OPSuccinctDataFetcher};
 use serde_json::Value;
 use sqlx::{types::BigDecimal, FromRow, PgPool};
 use std::{fmt::Debug, sync::Arc};
+use crate::db::types::BlockInfo;
 
 #[derive(sqlx::Type, Debug, Copy, Clone, PartialEq, Eq, Default)]
 #[sqlx(type_name = "smallint")]
@@ -154,34 +155,34 @@ impl OPSuccinctRequest {
         l2_chain_id: i64,
         fetcher: Arc<OPSuccinctDataFetcher>,
     ) -> Result<Vec<Self>> {
-        let block_data = fetcher
-            .get_l2_block_data_range(start_block as u64, end_block as u64)
-            .await?;
+        // Fetch block data from L2
+        let block_data =
+            fetcher.get_l2_block_data_range(start_block as u64, end_block as u64).await?;
     
         let mut requests = Vec::new();
-        let mut current_batch = Vec::new();
+        let mut current_batch: Vec<BlockInfo> = Vec::new();
         let mut current_gas = 0;
         let mut batch_start = None;
     
         for block in block_data {
-            // If this is the first block in the batch, mark the start
             if current_batch.is_empty() {
                 batch_start = Some(block.block_number);
             }
     
-            let next_gas_total = current_gas + block.gas_used as i64;
+            current_gas += block.gas_used as i64;
+            current_batch.push(block);
     
-            // If adding this block would exceed the gas threshold, finalize current batch first
-            if current_gas > 0 && next_gas_total > gas_threshold {
+            // If the accumulated gas exceeds the threshold, create a request
+            if current_gas >= gas_threshold {
                 let batch_end = current_batch
                     .last()
-                    .map(|b: &L2BlockData| b.block_number)
+                    .map(|b| b.block_number)
                     .unwrap_or(batch_start.unwrap());
     
                 let request = OPSuccinctRequest::new_range_request(
                     mode,
                     batch_start.unwrap() as i64,
-                    batch_end as i64, // end_block is exclusive
+                    (batch_end + 1) as i64, // end_block is exclusive
                     range_vkey_commitment,
                     rollup_config_hash,
                     current_batch.clone(),
@@ -190,30 +191,24 @@ impl OPSuccinctRequest {
                 );
     
                 requests.push(request);
-    
-                // Start a new batch with the current block
                 current_batch.clear();
                 current_gas = 0;
-                batch_start = Some(block.block_number);
+                batch_start = None;
             }
-    
-            // Add the current block to the batch
-            current_gas += block.gas_used as i64;
-            current_batch.push(block);
         }
     
-        // Push the last remaining batch if it exists
+        // Push the last remaining batch if there are any blocks left
         if !current_batch.is_empty() {
             let batch_start = batch_start.unwrap();
             let batch_end = current_batch
                 .last()
-                .map(|b: &L2BlockData| b.block_number)
+                .map(|b| b.block_number)
                 .unwrap_or(batch_start);
     
             let request = OPSuccinctRequest::new_range_request(
                 mode,
                 batch_start as i64,
-                batch_end as i64,
+                (batch_end + 1) as i64,
                 range_vkey_commitment,
                 rollup_config_hash,
                 current_batch,
@@ -226,6 +221,7 @@ impl OPSuccinctRequest {
     
         Ok(requests)
     }
+    
             
     /// Create a new range request given the block data.
     #[allow(clippy::too_many_arguments)]

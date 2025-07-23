@@ -236,51 +236,68 @@ where
         );
 
         if !ranges_to_prove.is_empty() {
-            info!("Inserting {} range proof requests into the database.", ranges_to_prove.len());
-
-            // Create range proof requests for the ranges to prove in parallel
-            if self.program_config.gas_threshold > 0 {
-                debug!(
-                    "Using gas threshold strategy: threshold = {}, start = {}, end = {}",
-                    self.program_config.gas_threshold, start_block, end_block
-                );
-            
-                OPSuccinctRequest::create_range_requests_respecting_gas_threshold(
-                    mode,
-                    start_block,
-                    end_block,
-                    self.program_config
-                        .gas_threshold
-                        .try_into()
-                        .expect("gas_threshold must fit into i64"),
-                    self.program_config.commitments.range_vkey_commitment,
-                    self.program_config.commitments.rollup_config_hash,
-                    l1_chain_id,
-                    l2_chain_id,
-                    self.proof_requester.fetcher.clone(),
-                )
-                .await?
+            info!("Inserting {} range proof requests...", ranges_to_prove.len());
+        
+            // Determine request mode (Real or Mock)
+            let mode = if self.requester_config.mock {
+                RequestMode::Mock
             } else {
-                debug!(
-                    "Using legacy range request strategy: start = {}, end = {}",
-                    start_block, end_block
-                );
-            
-                vec![OPSuccinctRequest::create_range_request(
-                    mode,
-                    start_block,
-                    end_block,
-                    self.program_config.commitments.range_vkey_commitment,
-                    self.program_config.commitments.rollup_config_hash,
-                    l1_chain_id,
-                    l2_chain_id,
-                    self.proof_requester.fetcher.clone(),
-                )
-                .await?]
+                RequestMode::Real
+            };
+        
+            let l1_chain_id = self.requester_config.l1_chain_id;
+            let l2_chain_id = self.requester_config.l2_chain_id;
+            let mut new_range_requests = Vec::new();
+        
+            for (start_block, end_block) in ranges_to_prove {
+                // If gas threshold is set, use the gas-aware strategy
+                if self.program_config.gas_threshold > 0 {
+                    debug!(
+                        "Using gas threshold strategy: threshold = {}, start = {}, end = {}",
+                        self.program_config.gas_threshold, start_block, end_block
+                    );
+        
+                    let mut split_requests = OPSuccinctRequest::create_range_requests_respecting_gas_threshold(
+                        mode,
+                        start_block,
+                        end_block,
+                        self.program_config.gas_threshold.try_into().unwrap(),
+                        self.program_config.commitments.range_vkey_commitment,
+                        self.program_config.commitments.rollup_config_hash,
+                        l1_chain_id,
+                        l2_chain_id,
+                        self.proof_requester.fetcher.clone(),
+                    )
+                    .await?;
+        
+                    new_range_requests.append(&mut split_requests);
+                } else {
+                    debug!(
+                        "Using legacy range strategy: start = {}, end = {}",
+                        start_block, end_block
+                    );
+        
+                    let request = OPSuccinctRequest::create_range_request(
+                        mode,
+                        start_block,
+                        end_block,
+                        self.program_config.commitments.range_vkey_commitment,
+                        self.program_config.commitments.rollup_config_hash,
+                        l1_chain_id,
+                        l2_chain_id,
+                        self.proof_requester.fetcher.clone(),
+                    )
+                    .await?;
+        
+                    new_range_requests.push(request);
+                }
             }
-            
-            // Insert the new range proof requests into the database.
-            self.driver_config.driver_db_client.insert_requests(&new_range_requests).await?;
+        
+            // Insert all generated requests into the DB
+            self.driver_config
+                .driver_db_client
+                .insert_requests(&new_range_requests)
+                .await?;
         }
 
         Ok(())

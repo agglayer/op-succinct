@@ -5,6 +5,7 @@ use alloy_primitives::{Address, Bytes, B256, U256};
 use alloy_provider::{network::ReceiptResponse, Provider};
 use alloy_sol_types::SolValue;
 use anyhow::{anyhow, Context, Result};
+use futures_util::TryStreamExt;
 use op_succinct_client_utils::{boot::hash_rollup_config, types::u32_to_u8};
 use op_succinct_elfs::AGGREGATION_ELF;
 use op_succinct_grpc::proofs::proofs_server::ProofsServer;
@@ -174,7 +175,6 @@ where
     /// Use the in-memory index of the highest block number to add new ranges to the database.
     #[tracing::instrument(name = "proposer.add_new_ranges", skip(self))]
     pub async fn add_new_ranges(&self) -> Result<()> {
-        // Get the latest end_block of already inserted range requests (exclusive)
         let latest_block_number = self
             .driver_config
             .driver_db_client
@@ -182,12 +182,10 @@ where
             .await?
             .unwrap_or(self.program_config.first_block_number);
     
-        // Get the current L2 head block
         let latest_l2_block = self.driver_config.l2_node_reader.get_l2_block_number().await?;
         let start_block = latest_block_number;
-        let end_block = latest_l2_block + 1; // Exclusive
+        let end_block = latest_l2_block + 1;
     
-        // Nothing to do if there are no new blocks
         if start_block >= end_block {
             debug!(
                 "No new blocks to process: start_block = {}, end_block = {}",
@@ -202,7 +200,6 @@ where
         let l1_chain_id = self.program_config.l1_chain_id;
         let l2_chain_id = self.program_config.l2_chain_id;
     
-        // Use gas threshold strategy if it's configured
         let new_range_requests = if self.program_config.gas_threshold > 0 {
             debug!(
                 "Using gas threshold strategy: threshold = {}, start = {}, end = {}",
@@ -222,24 +219,17 @@ where
             )
             .await?
         } else {
-            debug!(
-                "Using single range strategy: start = {}, end = {}",
-                start_block, end_block
-            );
-    
-            vec![
-                OPSuccinctRequest::create_range_request(
-                    mode,
-                    start_block,
-                    end_block,
-                    range_vkey_commitment,
-                    rollup_config_hash,
-                    l1_chain_id,
-                    l2_chain_id,
-                    self.driver_config.fetcher.clone(),
-                )
-                .await?,
-            ]
+            vec![OPSuccinctRequest::create_range_request(
+                mode,
+                start_block,
+                end_block,
+                range_vkey_commitment,
+                rollup_config_hash,
+                l1_chain_id,
+                l2_chain_id,
+                self.driver_config.fetcher.clone(),
+            )
+            .await?]
         };
     
         self.driver_config
@@ -249,7 +239,6 @@ where
     
         Ok(())
     }
-    
 
     /// Handle all proof requests in the Prove state.
     #[tracing::instrument(name = "proposer.handle_proving_requests", skip(self))]

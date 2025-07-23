@@ -5,7 +5,6 @@ use alloy_primitives::{Address, Bytes, B256, U256};
 use alloy_provider::{network::ReceiptResponse, Provider};
 use alloy_sol_types::SolValue;
 use anyhow::{anyhow, Context, Result};
-use futures_util::TryStreamExt;
 use op_succinct_client_utils::{boot::hash_rollup_config, types::u32_to_u8};
 use op_succinct_elfs::AGGREGATION_ELF;
 use op_succinct_grpc::proofs::proofs_server::ProofsServer;
@@ -27,7 +26,6 @@ use crate::{
     db::{DriverDBClient, OPSuccinctRequest, RequestMode, RequestStatus},
     find_gaps, get_latest_proposed_block_number, get_ranges_to_prove, CommitmentConfig,
     ContractConfig, OPSuccinctProofRequester, ProgramConfig, RequesterConfig, ValidityGauge,
-    RequestType,
 };
 
 /// Configuration for the driver.
@@ -255,7 +253,7 @@ where
                     .driver_db_client
                     .get_max_end_block()
                     .await?
-                    .unwrap_or(self.program_config.first_block_number.unwrap_or(0))
+                    .unwrap_or(0)
             } else {
                 0 // not used
             };
@@ -268,7 +266,7 @@ where
                     );
                     continue;
                 }
-                
+
                 // If gas threshold is set, use the gas-aware strategy
                 if self.program_config.gas_threshold > 0 {
                     debug!(

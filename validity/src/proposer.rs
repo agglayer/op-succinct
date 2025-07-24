@@ -239,7 +239,15 @@ where
                 )
                 .await?;
     
-            new_range_requests.extend(split_requests);
+            if !split_requests.is_empty() {
+                info!("Gas-threshold request created starting at block {}", start_block);
+                new_range_requests.extend(split_requests);
+            } else {
+                debug!(
+                    "Gas threshold not met yet from block {}. Will try again later.",
+                    start_block
+                );
+            }
         } else {
             info!(
                 "Generating fixed-interval requests from {} to {} (interval = {})",

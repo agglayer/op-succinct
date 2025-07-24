@@ -219,7 +219,7 @@ where
                 latest_proposed_block_number, finalized_block_number, gas_threshold
             );
     
-            let start_block = self
+            let mut start_block = self
                 .driver_config
                 .driver_db_client
                 .get_max_end_block()

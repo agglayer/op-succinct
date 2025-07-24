@@ -142,7 +142,7 @@ impl OPSuccinctRequest {
     #[allow(clippy::too_many_arguments)]
     pub async fn create_range_requests_respecting_gas_threshold(
         mode: RequestMode,
-        mut start_block: i64,
+        start_block: i64,
         gas_threshold: i64,
         range_vkey_commitment: B256,
         rollup_config_hash: B256,
@@ -150,36 +150,37 @@ impl OPSuccinctRequest {
         l2_chain_id: i64,
         fetcher: Arc<OPSuccinctDataFetcher>,
     ) -> Result<Vec<Self>> {
+        let mut current_block = start_block as u64;
         let mut current_batch: Vec<BlockInfo> = Vec::new();
         let mut current_gas: i64 = 0;
     
-        // Safety limit to avoid infinite loops
         const MAX_BLOCKS_TO_FETCH: u64 = 10_000;
     
         for _ in 0..MAX_BLOCKS_TO_FETCH {
-            // Fetch one block at a time from current start_block
+            // Fetch the next block
             let block_opt = fetcher
-                .get_l2_block_data_range(start_block as u64, (start_block + 1) as u64)
+                .get_l2_block_data_range(current_block, current_block + 1)
                 .await?;
     
+            // Stop if no more blocks are available
             if block_opt.is_empty() {
-                break; // No more blocks available
+                break;
             }
     
             let block = &block_opt[0];
-            current_gas += block.gas_used as i64;
             current_batch.push(block.clone());
+            current_gas += block.gas_used as i64;
     
-            start_block += 1; // Advance for the next iteration
+            current_block += 1;
     
             if current_gas >= gas_threshold {
                 let batch_start = current_batch.first().unwrap().block_number;
-                let batch_end = current_batch.last().unwrap().block_number;
+                let batch_end = current_batch.last().unwrap().block_number + 1; // end_block is exclusive
     
                 let request = OPSuccinctRequest::new_range_request(
                     mode,
                     batch_start as i64,
-                    (batch_end + 1) as i64, // `end_block` is exclusive
+                    batch_end as i64,
                     range_vkey_commitment,
                     rollup_config_hash,
                     current_batch,
@@ -191,7 +192,7 @@ impl OPSuccinctRequest {
             }
         }
     
-        // Not enough gas accumulated
+        // Not enough gas accumulated — defer request
         tracing::info!(
             "Deferred range request creation: only accumulated {} gas (threshold: {}) starting from block {}",
             current_gas,

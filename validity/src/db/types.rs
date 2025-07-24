@@ -137,16 +137,12 @@ impl OPSuccinctRequest {
         ))
     }
     
-    /// Builds multiple range requests by grouping block data until a gas threshold is reached.
-    ///
-    /// This function fetches all block data in the specified range and accumulates blocks
-    /// into separate requests such that the total `gas_used` in each does not exceed the
-    /// configured GAS_THRESHOLD. The resulting requests are then returned for insertion.
+    /// Creates range requests by accumulating L2 blocks until a given gas threshold is reached.
+    /// Ignores any `end_block` limit and only stops when block data is exhausted.
     #[allow(clippy::too_many_arguments)]
     pub async fn create_range_requests_respecting_gas_threshold(
         mode: RequestMode,
         start_block: i64,
-        end_block: i64,
         gas_threshold: i64,
         range_vkey_commitment: B256,
         rollup_config_hash: B256,
@@ -154,30 +150,35 @@ impl OPSuccinctRequest {
         l2_chain_id: i64,
         fetcher: Arc<OPSuccinctDataFetcher>,
     ) -> Result<Vec<Self>> {
-        // Fetch block data from L2
-        let block_data =
-            fetcher.get_l2_block_data_range(start_block as u64, end_block as u64).await?;
-    
         let mut requests = Vec::new();
         let mut current_batch: Vec<BlockInfo> = Vec::new();
         let mut current_gas = 0;
-        let mut batch_start = None;
-    
-        for block in block_data {
+        let mut batch_start: Option<u64> = None;
+        let mut current_block = start_block as u64;
+
+        loop {
+            // Fetch the next block from the L2 source
+            let block_opt = fetcher.get_l2_block_data(current_block).await?;
+
+            // Stop if there's no more block data available
+            let block = match block_opt {
+                Some(b) => b,
+                None => break,
+            };
+
+            // Initialize batch start if needed
             if current_batch.is_empty() {
                 batch_start = Some(block.block_number);
             }
-    
+
             current_gas += block.gas_used as i64;
-            current_batch.push(block);
-    
-            // If the accumulated gas exceeds the threshold, create a request
+            current_batch.push(block.clone());
+            current_block += 1;
+
+            // If the accumulated gas exceeds or reaches the threshold, finalize the current batch
             if current_gas >= gas_threshold {
-                let batch_end = current_batch
-                    .last()
-                    .map(|b| b.block_number)
-                    .unwrap_or(batch_start.unwrap());
-    
+                let batch_end = block.block_number;
+
                 let request = OPSuccinctRequest::new_range_request(
                     mode,
                     batch_start.unwrap() as i64,
@@ -188,22 +189,23 @@ impl OPSuccinctRequest {
                     l1_chain_id,
                     l2_chain_id,
                 );
-    
+
                 requests.push(request);
+
                 current_batch.clear();
                 current_gas = 0;
                 batch_start = None;
             }
         }
-    
-        // Push the last remaining batch if there are any blocks left
+
+        // Push the final leftover batch if any blocks remain
         if !current_batch.is_empty() {
             let batch_start = batch_start.unwrap();
             let batch_end = current_batch
                 .last()
                 .map(|b| b.block_number)
                 .unwrap_or(batch_start);
-    
+
             let request = OPSuccinctRequest::new_range_request(
                 mode,
                 batch_start as i64,
@@ -214,14 +216,13 @@ impl OPSuccinctRequest {
                 l1_chain_id,
                 l2_chain_id,
             );
-    
+
             requests.push(request);
         }
-    
+
         Ok(requests)
     }
-    
-            
+
     /// Create a new range request given the block data.
     #[allow(clippy::too_many_arguments)]
     pub fn new_range_request(

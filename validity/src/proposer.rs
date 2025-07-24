@@ -219,12 +219,15 @@ where
                 latest_proposed_block_number, finalized_block_number, gas_threshold
             );
     
-            let start_block = self
+            let start_block = match self
                 .driver_config
                 .driver_db_client
                 .get_max_end_block()
                 .await?
-                .unwrap_or(latest_proposed_block_number as i64);
+            {
+                Some(b) => b,
+                None => latest_proposed_block_number as i64,
+            };
     
             let split_requests =
                 OPSuccinctRequest::create_range_requests_respecting_gas_threshold(

@@ -174,14 +174,13 @@ where
     /// Use the in-memory index of the highest block number to add new ranges to the database.
     #[tracing::instrument(name = "proposer.add_new_ranges", skip(self))]
     pub async fn add_new_ranges(&self) -> Result<()> {
-        // Get the latest proposed block number on the contract.
+        // Get the latest proposed block number on the contract
         let latest_proposed_block_number = get_latest_proposed_block_number(
             self.contract_config.l2oo_address,
             self.driver_config.fetcher.as_ref(),
         )
         .await?;
     
-        // Get the highest finalized block that can be used.
         let finalized_block_number = match self
             .proof_requester
             .host
@@ -201,44 +200,10 @@ where
             }
         };
     
-        // Fetch all active requests starting at or after the latest proposed block.
-        let mut requests = self
-            .driver_config
-            .driver_db_client
-            .fetch_ranges_after_block(
-                &[
-                    RequestStatus::Unrequested,
-                    RequestStatus::WitnessGeneration,
-                    RequestStatus::Execution,
-                    RequestStatus::Prove,
-                    RequestStatus::Complete,
-                ],
-                latest_proposed_block_number as i64,
-                &self.program_config.commitments,
-                self.requester_config.l1_chain_id,
-                self.requester_config.l2_chain_id,
-            )
-            .await?;
+        let gas_threshold = self.program_config.gas_threshold;
+        let mut new_range_requests = Vec::new();
     
-        requests.sort_by_key(|r| r.0);
-    
-        let disjoint_ranges = find_gaps(
-            latest_proposed_block_number as i64,
-            finalized_block_number as i64,
-            &requests,
-        );
-    
-        let ranges_to_prove = get_ranges_to_prove(
-            &disjoint_ranges,
-            self.requester_config.range_proof_interval as i64,
-        );
-    
-        if ranges_to_prove.is_empty() {
-            return Ok(());
-        }
-    
-        info!("Inserting {} range proof requests...", ranges_to_prove.len());
-    
+        // Determine request mode (Real or Mock)
         let mode = if self.requester_config.mock {
             RequestMode::Mock
         } else {
@@ -248,66 +213,97 @@ where
         let l1_chain_id = self.requester_config.l1_chain_id;
         let l2_chain_id = self.requester_config.l2_chain_id;
     
-        let mut new_range_requests = Vec::new();
+        if gas_threshold > 0 {
+            info!(
+                "Generating gas-based requests from {} to {} (threshold = {})",
+                latest_proposed_block_number, finalized_block_number, gas_threshold
+            );
     
-        // If using gas threshold, determine the last used block to avoid duplication.
-        let last_used_block = if self.program_config.gas_threshold > 0 {
-            self.driver_config
+            let start_block = self
+                .driver_config
                 .driver_db_client
                 .get_max_end_block()
                 .await?
-                .unwrap_or(latest_proposed_block_number as i64)
-        } else {
-            0 // unused
-        };
+                .unwrap_or(latest_proposed_block_number as i64);
     
-        for (start_block, _end_block) in ranges_to_prove {
-            // Skip overlapping or already-covered blocks
-            if self.program_config.gas_threshold > 0 && start_block < last_used_block {
-                debug!(
-                    "Skipping overlapping range: start = {}, last_used_block = {}",
-                    start_block, last_used_block
-                );
-                continue;
-            }
-    
-            if self.program_config.gas_threshold > 0 {
-                debug!(
-                    "Using gas threshold strategy from block {} with threshold {}",
-                    start_block, self.program_config.gas_threshold
-                );
-    
-                let mut split_requests = OPSuccinctRequest::create_range_requests_respecting_gas_threshold(
+            let split_requests =
+                OPSuccinctRequest::create_range_requests_respecting_gas_threshold(
                     mode,
                     start_block,
-                    self.program_config.gas_threshold,
+                    gas_threshold.try_into().unwrap(),
                     self.program_config.commitments.range_vkey_commitment,
                     self.program_config.commitments.rollup_config_hash,
                     l1_chain_id,
                     l2_chain_id,
                     self.proof_requester.fetcher.clone(),
-                ).await?;
+                )
+                .await?;
     
-                new_range_requests.append(&mut split_requests);
-            } else {
-                debug!("Using legacy range strategy: start = {}, end = {}", start_block, _end_block);
+            new_range_requests.extend(split_requests);
+        } else {
+            info!(
+                "Generating fixed-interval requests from {} to {} (interval = {})",
+                latest_proposed_block_number,
+                finalized_block_number,
+                self.requester_config.range_proof_interval
+            );
+    
+            let mut requests = self
+                .driver_config
+                .driver_db_client
+                .fetch_ranges_after_block(
+                    &[
+                        RequestStatus::Unrequested,
+                        RequestStatus::WitnessGeneration,
+                        RequestStatus::Execution,
+                        RequestStatus::Prove,
+                        RequestStatus::Complete,
+                    ],
+                    latest_proposed_block_number as i64,
+                    &self.program_config.commitments,
+                    l1_chain_id,
+                    l2_chain_id,
+                )
+                .await?;
+    
+            requests.sort_by_key(|r| r.0);
+    
+            let disjoint_ranges = find_gaps(
+                latest_proposed_block_number as i64,
+                finalized_block_number as i64,
+                &requests,
+            );
+    
+            let ranges_to_prove = get_ranges_to_prove(
+                &disjoint_ranges,
+                self.requester_config.range_proof_interval as i64,
+            );
+    
+            for (start_block, end_block) in ranges_to_prove {
+                debug!(
+                    "Generating fixed-interval request: start = {}, end = {}",
+                    start_block, end_block
+                );
     
                 let request = OPSuccinctRequest::create_range_request(
                     mode,
                     start_block,
-                    _end_block,
+                    end_block,
                     self.program_config.commitments.range_vkey_commitment,
                     self.program_config.commitments.rollup_config_hash,
                     l1_chain_id,
                     l2_chain_id,
                     self.proof_requester.fetcher.clone(),
-                ).await?;
+                )
+                .await?;
     
                 new_range_requests.push(request);
             }
         }
     
         if !new_range_requests.is_empty() {
+            info!("Inserting {} range proof requests...", new_range_requests.len());
+    
             self.driver_config
                 .driver_db_client
                 .insert_requests(&new_range_requests)
@@ -316,7 +312,7 @@ where
     
         Ok(())
     }
-    
+        
     /// Handle all proof requests in the Prove state.
     #[tracing::instrument(name = "proposer.handle_proving_requests", skip(self))]
     pub async fn handle_proving_requests(&self) -> Result<()> {

@@ -150,79 +150,59 @@ impl OPSuccinctRequest {
         l2_chain_id: i64,
         fetcher: Arc<OPSuccinctDataFetcher>,
     ) -> Result<Vec<Self>> {
-        let mut requests = Vec::new();
-        let mut current_batch: Vec<BlockInfo> = Vec::new();
-        let mut current_gas = 0;
-        let mut batch_start: Option<u64> = None;
+        // Start fetching blocks from `start_block` forward
         let mut current_block = start_block as u64;
-
-        loop {
-            // Fetch the next block from the L2 source
-            let block_opt = fetcher.get_l2_block_data(current_block).await?;
-
-            // Stop if there's no more block data available
-            let block = match block_opt {
-                Some(b) => b,
-                None => break,
-            };
-
-            // Initialize batch start if needed
-            if current_batch.is_empty() {
-                batch_start = Some(block.block_number);
+        let mut current_batch: Vec<BlockInfo> = Vec::new();
+        let mut current_gas: i64 = 0;
+    
+        // Safety limit to avoid infinite loops in case of upstream bugs
+        const MAX_BLOCKS_TO_FETCH: u64 = 10_000;
+    
+        for _ in 0..MAX_BLOCKS_TO_FETCH {
+            // Attempt to fetch a single block
+            let block_opt = fetcher.get_l2_block_data_range(current_block, current_block + 1).await?;
+    
+            // If no more blocks are available, stop
+            if block_opt.is_empty() {
+                break;
             }
-
-            current_gas += block.gas_used as i64;
+    
+            let block = &block_opt[0];
             current_batch.push(block.clone());
+            current_gas += block.gas_used as i64;
+    
             current_block += 1;
-
-            // If the accumulated gas exceeds or reaches the threshold, finalize the current batch
+    
             if current_gas >= gas_threshold {
-                let batch_end = block.block_number;
-
+                let batch_start = current_batch.first().unwrap().block_number;
+                let batch_end = current_batch.last().unwrap().block_number;
+    
                 let request = OPSuccinctRequest::new_range_request(
                     mode,
-                    batch_start.unwrap() as i64,
-                    (batch_end + 1) as i64, // end_block is exclusive
+                    batch_start as i64,
+                    (batch_end + 1) as i64, // `end_block` is exclusive
                     range_vkey_commitment,
                     rollup_config_hash,
-                    current_batch.clone(),
+                    current_batch,
                     l1_chain_id,
                     l2_chain_id,
                 );
-
-                requests.push(request);
-
-                current_batch.clear();
-                current_gas = 0;
-                batch_start = None;
+    
+                return Ok(vec![request]);
             }
         }
-
-        // Push the final leftover batch if any blocks remain
-        if !current_batch.is_empty() {
-            let batch_start = batch_start.unwrap();
-            let batch_end = current_batch
-                .last()
-                .map(|b| b.block_number)
-                .unwrap_or(batch_start);
-
-            let request = OPSuccinctRequest::new_range_request(
-                mode,
-                batch_start as i64,
-                (batch_end + 1) as i64,
-                range_vkey_commitment,
-                rollup_config_hash,
-                current_batch,
-                l1_chain_id,
-                l2_chain_id,
-            );
-
-            requests.push(request);
-        }
-
-        Ok(requests)
+    
+        // Not enough gas: defer request creation
+        tracing::info!(
+            "Deferred range request creation: only accumulated {} gas (threshold: {}) starting from block {}",
+            current_gas,
+            gas_threshold,
+            start_block,
+        );
+    
+        Ok(vec![]) // No request created
     }
-
+    
     /// Create a new range request given the block data.
     #[allow(clippy::too_many_arguments)]
     pub fn new_range_request(

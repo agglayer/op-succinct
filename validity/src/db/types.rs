@@ -180,7 +180,7 @@ impl OPSuccinctRequest {
                 let request = OPSuccinctRequest::new_range_request(
                     mode,
                     batch_start as i64,
-                    (batch_end + 1) as i64, // `end_block` is exclusive
+                    batch_end as i64,
                     range_vkey_commitment,
                     rollup_config_hash,
                     current_batch,

@@ -58,4 +58,5 @@ pub struct RequesterConfig {
     /// Address of the gRPC server, it will start a gRPC server if it is not empty.
     /// The gRPC server will listen on this address and port.
     pub grpc_addr: String,
+    pub gas_threshold: u64,
 }

@@ -200,7 +200,7 @@ where
             }
         };
     
-        let gas_threshold_u64 = self.program_config.gas_threshold;
+        let gas_threshold = self.program_config.gas_threshold;
         let mut new_range_requests = Vec::new();
     
         // Determine request mode (Real or Mock)
@@ -213,10 +213,10 @@ where
         let l1_chain_id = self.requester_config.l1_chain_id;
         let l2_chain_id = self.requester_config.l2_chain_id;
     
-        if gas_threshold_u64 > 0 {
+        if gas_threshold > 0 {
             info!(
                 "Generating gas-based requests from {} to {} (gas threshold = {})",
-                latest_proposed_block_number, finalized_block_number, gas_threshold_u64
+                latest_proposed_block_number, finalized_block_number, gas_threshold
             );
     
             let mut start_block = self
@@ -228,11 +228,7 @@ where
             if start_block == 0 {
                 start_block = latest_proposed_block_number as i64;
             }
-    
-            let gas_threshold = i64::try_from(gas_threshold_u64).map_err(|_| {
-                anyhow!("Gas threshold ({}) exceeds i64::MAX", gas_threshold_u64)
-            })?;
-    
+
             let split_requests =
                 OPSuccinctRequest::create_range_requests_respecting_gas_threshold(
                     mode,

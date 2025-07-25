@@ -144,7 +144,7 @@ impl OPSuccinctRequest {
         mode: RequestMode,
         start_block: i64,
         max_block: u64,
-        gas_threshold: i64,
+        gas_threshold: u64,
         range_vkey_commitment: B256,
         rollup_config_hash: B256,
         l1_chain_id: i64,
@@ -153,7 +153,7 @@ impl OPSuccinctRequest {
     ) -> Result<Vec<Self>> {
         let mut current_block = start_block as u64;
         let mut current_batch: Vec<BlockInfo> = Vec::new();
-        let mut current_gas: i64 = 0;
+        let mut current_gas: u64 = 0;
     
         const MAX_BLOCKS_TO_FETCH: u64 = 10_000;
 
@@ -176,7 +176,7 @@ impl OPSuccinctRequest {
     
             let block = &block_opt[0];
             current_batch.push(block.clone());
-            current_gas += block.gas_used as i64;
+            current_gas += block.gas_used;
     
             current_block += 1;
     

@@ -218,7 +218,11 @@ where
             let mut start_block = self
                 .driver_config
                 .driver_db_client
-                .get_max_end_block()
+                .get_max_end_block(
+                    &self.program_config.commitments,
+                    l1_chain_id,
+                    l2_chain_id,
+                )
                 .await?;
     
             if start_block == 0 {

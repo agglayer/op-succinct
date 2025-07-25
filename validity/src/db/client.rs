@@ -23,11 +23,20 @@ impl DriverDBClient {
     }
 
     /// Retrieves the highest `end_block` value among all range requests in the database.
-    pub async fn get_max_end_block(&self) -> Result<i64> {
+    pub async fn get_max_end_block(
+        &self,
+        commitment: &CommitmentConfig,
+        l1_chain_id: i64,
+        l2_chain_id: i64,
+    ) -> Result<i64> {
         let row: Option<(i64,)> = sqlx::query_as(
-            "SELECT COALESCE(MAX(end_block), 0) FROM requests WHERE req_type = $1"
+            "SELECT COALESCE(MAX(end_block), 0) FROM requests WHERE req_type = $1 AND range_vkey_commitment = $2 AND rollup_config_hash = $3 AND l1_chain_id = $4 AND l2_chain_id = $5",
+            RequestType::Range as i16,
+            &commitment.range_vkey_commitment[..],
+            &commitment.rollup_config_hash[..],
+            l1_chain_id,
+            l2_chain_id
         )
-        .bind(RequestType::Range as i16)
         .fetch_optional(&self.pool)
         .await?;
     

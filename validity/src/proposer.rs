@@ -105,7 +105,7 @@ where
         // Initialize fetcher
         let rollup_config_hash = hash_rollup_config(fetcher.rollup_config.as_ref().unwrap());
 
-        let gas_threshold = self.requester_config.gas_threshold;
+        let gas_threshold = requester_config.gas_threshold;
         if gas_threshold > 0 {
             info!("Aggregation strategy: using gas threshold of {}", gas_threshold);
         } else {

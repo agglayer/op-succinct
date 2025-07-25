@@ -22,6 +22,18 @@ impl DriverDBClient {
         Ok(DriverDBClient { pool })
     }
 
+    /// Retrieves the highest `end_block` value among all range requests in the database.
+    pub async fn get_max_end_block(&self) -> Result<i64> {
+        let row: Option<(i64,)> = sqlx::query_as(
+            "SELECT COALESCE(MAX(end_block), 0) FROM requests WHERE req_type = $1"
+        )
+        .bind(RequestType::Range as i16)
+        .fetch_optional(&self.pool)
+        .await?;
+    
+        Ok(row.map(|r| r.0).unwrap_or(0))
+    }
+
     /// Adds a chain lock to the database.
     pub async fn add_chain_lock(
         &self,

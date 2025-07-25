@@ -136,7 +136,81 @@ impl OPSuccinctRequest {
             l2_chain_id,
         ))
     }
+    
+    /// Creates range requests by accumulating L2 blocks until a given gas threshold is reached.
+    /// Ignores any `end_block` limit and only stops when block data is exhausted.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_range_requests_respecting_gas_threshold(
+        mode: RequestMode,
+        start_block: i64,
+        max_block: u64,
+        gas_threshold: i64,
+        range_vkey_commitment: B256,
+        rollup_config_hash: B256,
+        l1_chain_id: i64,
+        l2_chain_id: i64,
+        fetcher: Arc<OPSuccinctDataFetcher>,
+    ) -> Result<Vec<Self>> {
+        let mut current_block = start_block as u64;
+        let mut current_batch: Vec<BlockInfo> = Vec::new();
+        let mut current_gas: i64 = 0;
+    
+        const MAX_BLOCKS_TO_FETCH: u64 = 10_000;
 
+        // If the start block is 0, set it to 1
+        // as we query ranges from current_block - 1 to current_block
+        if current_block == 0 {
+            current_block = 1;
+        }
+    
+        for _ in 0..MAX_BLOCKS_TO_FETCH {
+            // Stop if no more blocks are available
+            if current_block > max_block {
+                break;
+            }
+
+            // Fetch the next block
+            let block_opt = fetcher
+                .get_l2_block_data_range(current_block - 1, current_block)
+                .await?;
+    
+            let block = &block_opt[0];
+            current_batch.push(block.clone());
+            current_gas += block.gas_used as i64;
+    
+            current_block += 1;
+    
+            if current_gas >= gas_threshold {
+                let batch_start = current_batch.first().unwrap().block_number;
+                let batch_end = current_batch.last().unwrap().block_number;
+    
+                let request = OPSuccinctRequest::new_range_request(
+                    mode,
+                    batch_start as i64,
+                    batch_end as i64,
+                    range_vkey_commitment,
+                    rollup_config_hash,
+                    current_batch,
+                    l1_chain_id,
+                    l2_chain_id,
+                );
+    
+                return Ok(vec![request]);
+            }
+        }
+    
+        // Not enough gas accumulated — defer request
+        tracing::info!(
+            "Deferred range request creation: only accumulated {} gas (gas threshold: {}) starting from block {} to block {}",
+            current_gas,
+            gas_threshold,
+            start_block,
+            max_block,
+        );
+    
+        Ok(vec![]) // No request created
+    }
+    
     /// Create a new range request given the block data.
     #[allow(clippy::too_many_arguments)]
     pub fn new_range_request(

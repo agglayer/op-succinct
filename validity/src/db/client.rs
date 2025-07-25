@@ -30,19 +30,25 @@ impl DriverDBClient {
         l2_chain_id: i64,
     ) -> Result<i64> {
         let row: Option<(i64,)> = sqlx::query_as(
-            "SELECT COALESCE(MAX(end_block), 0) FROM requests WHERE req_type = $1 AND range_vkey_commitment = $2 AND rollup_config_hash = $3 AND l1_chain_id = $4 AND l2_chain_id = $5",
-            RequestType::Range as i16,
-            &commitment.range_vkey_commitment[..],
-            &commitment.rollup_config_hash[..],
-            l1_chain_id,
-            l2_chain_id
+            "SELECT COALESCE(MAX(end_block), 0) 
+             FROM requests 
+             WHERE req_type = $1 
+               AND range_vkey_commitment = $2 
+               AND rollup_config_hash = $3 
+               AND l1_chain_id = $4 
+               AND l2_chain_id = $5"
         )
+        .bind(RequestType::Range as i16)
+        .bind(&commitment.range_vkey_commitment[..])
+        .bind(&commitment.rollup_config_hash[..])
+        .bind(l1_chain_id)
+        .bind(l2_chain_id)
         .fetch_optional(&self.pool)
         .await?;
     
         Ok(row.map(|r| r.0).unwrap_or(0))
     }
-
+    
     /// Adds a chain lock to the database.
     pub async fn add_chain_lock(
         &self,

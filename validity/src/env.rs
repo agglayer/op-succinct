@@ -29,6 +29,9 @@ pub struct EnvironmentConfig {
     pub safe_db_fallback: bool,
     pub grpc_addr: String,
     pub log_format: String,
+    pub gas_threshold: u64,
+    pub txs_threshold: u64,
+    pub blocks_threshold: u64,
 }
 
 /// Helper function to get environment variables with a default value and parse them.
@@ -121,6 +124,9 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         agglayer: get_env_var("AGGLAYER", Some(false))?,
         grpc_addr: get_env_var("GRPC_ADDRESS", Some("[::1]:50051".to_string()))?,
         log_format: get_env_var("LOG_FORMAT", Some("pretty".to_string()))?,
+        gas_threshold: get_env_var("GAS_THRESHOLD", Some(0))?,
+        txs_threshold: get_env_var("TXS_THRESHOLD", Some(0))?,
+        blocks_threshold: get_env_var("BLOCKS_THRESHOLD", Some(0))?,
     };
 
     Ok(config)

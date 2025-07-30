@@ -136,7 +136,118 @@ impl OPSuccinctRequest {
             l2_chain_id,
         ))
     }
+    
+    /// Creates range requests by accumulating L2 blocks until any of the given thresholds is reached.
+    /// The thresholds are:
+    /// - gas threshold: the total gas used in the blocks
+    /// - txs threshold: the total number of transactions in the blocks
+    /// - blocks threshold: the total number of blocks
+    /// The request is created when any of the thresholds is reached.
+    /// If none of the thresholds is reached, the request is deferred.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_range_requests_respecting_thresholds(
+        mode: RequestMode,
+        start_block: i64,
+        max_block: u64,
+        gas_threshold: u64,
+        txs_threshold: u64,
+        blocks_threshold: u64,
+        range_vkey_commitment: B256,
+        rollup_config_hash: B256,
+        l1_chain_id: i64,
+        l2_chain_id: i64,
+        fetcher: Arc<OPSuccinctDataFetcher>,
+    ) -> Result<Vec<Self>> {
+        let mut current_block = start_block as u64;
+        let mut current_batch: Vec<BlockInfo> = Vec::new();
+        let mut current_gas: u64 = 0;
+        let mut current_txs: u64 = 0;
+        let mut current_blocks: u64 = 0;
+    
+        const MAX_BLOCKS_TO_FETCH: u64 = 100_000;
 
+        // If the start block is 0, set it to 1
+        // as we query ranges from current_block - 1 to current_block
+        if current_block == 0 {
+            current_block = 1;
+        }
+    
+        for bn in 0..MAX_BLOCKS_TO_FETCH {
+            // Stop if no more blocks are available
+            if current_block > max_block {
+                break;
+            }
+
+            // Fetch the next block
+            let block_opt = fetcher
+                .get_l2_block_data_range(current_block - 1, current_block)
+                .await?;
+    
+            let block = &block_opt[0];
+            current_batch.push(block.clone());
+            current_gas += block.gas_used;
+            current_txs += block.transaction_count;
+            current_blocks += 1;
+    
+            current_block += 1;
+
+            let gas_threshold_reached = gas_threshold > 0 && current_gas >= gas_threshold;
+            let txs_threshold_reached = txs_threshold > 0 && current_txs >= txs_threshold;
+            let blocks_threshold_reached = blocks_threshold > 0 && current_blocks >= blocks_threshold;
+            
+            let thresholds_reached = gas_threshold_reached || txs_threshold_reached || blocks_threshold_reached;
+
+            if thresholds_reached || bn == MAX_BLOCKS_TO_FETCH - 1 {
+                // Log the thresholds that were reached vs configured thresholds
+                let reached_threshold = if gas_threshold_reached {
+                    "gas"
+                } else if txs_threshold_reached {
+                    "txs"
+                } else if blocks_threshold_reached {
+                    "blocks"
+                } else {
+                    "hardcoded max blocks to fetch"
+                };
+
+                tracing::info!(
+                    threshold = reached_threshold,
+                    gas = current_gas,
+                    txs = current_txs,
+                    blocks = current_blocks,
+                    "Threshold reached; creating range request from block {} to {}",
+                    current_batch.first().unwrap().block_number,
+                    current_batch.last().unwrap().block_number,
+                );
+
+                let batch_start = current_batch.first().unwrap().block_number;
+                let batch_end = current_batch.last().unwrap().block_number;
+    
+                let request = OPSuccinctRequest::new_range_request(
+                    mode,
+                    batch_start as i64,
+                    batch_end as i64,
+                    range_vkey_commitment,
+                    rollup_config_hash,
+                    current_batch,
+                    l1_chain_id,
+                    l2_chain_id,
+                );
+    
+                return Ok(vec![request]);
+            }
+        }
+    
+        // Trace the thresholds that were reached vs configured thresholds
+        tracing::info!(
+            "Deferred range request creation: thresholds not reached (gas = {}, txs = {}, blocks = {})",
+            current_gas,
+            current_txs,
+            current_blocks,
+        );
+    
+        Ok(vec![]) // No request created
+    }
+    
     /// Create a new range request given the block data.
     #[allow(clippy::too_many_arguments)]
     pub fn new_range_request(

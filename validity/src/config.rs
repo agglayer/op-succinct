@@ -31,6 +31,9 @@ pub struct ProgramConfig {
     pub agg_vk: Arc<SP1VerifyingKey>,
     pub agg_pk: Arc<SP1ProvingKey>,
     pub commitments: CommitmentConfig,
+    pub gas_threshold: u64,
+    pub txs_threshold: u64,
+    pub blocks_threshold: u64,
 }
 
 #[derive(Clone)]
@@ -57,4 +60,7 @@ pub struct RequesterConfig {
     /// Address of the gRPC server, it will start a gRPC server if it is not empty.
     /// The gRPC server will listen on this address and port.
     pub grpc_addr: String,
+    pub gas_threshold: u64,
+    pub txs_threshold: u64,
+    pub blocks_threshold: u64,
 }

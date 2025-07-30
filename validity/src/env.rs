@@ -30,6 +30,8 @@ pub struct EnvironmentConfig {
     pub grpc_addr: String,
     pub log_format: String,
     pub gas_threshold: u64,
+    pub txs_threshold: u64,
+    pub blocks_threshold: u64,
 }
 
 /// Helper function to get environment variables with a default value and parse them.

@@ -108,7 +108,7 @@ where
         let gas_threshold = requester_config.gas_threshold;
         let txs_threshold = requester_config.txs_threshold;
         let blocks_threshold = requester_config.blocks_threshold;
-        if gas_threshold > 0 || requester_config.txs_threshold > 0 || requester_config.blocks_threshold > 0 {
+        if gas_threshold > 0 || txs_threshold > 0 || blocks_threshold > 0 {
             info!("Aggregation strategy: using gas threshold of {}, txs threshold of {}, and blocks threshold of {}", gas_threshold, txs_threshold, blocks_threshold);
         } else {
             info!("Aggregation strategy: using block range [start_block, end_block]");

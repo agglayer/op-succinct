@@ -61,4 +61,6 @@ pub struct RequesterConfig {
     /// The gRPC server will listen on this address and port.
     pub grpc_addr: String,
     pub gas_threshold: u64,
+    pub txs_threshold: u64,
+    pub blocks_threshold: u64,
 }

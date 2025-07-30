@@ -191,9 +191,9 @@ impl OPSuccinctRequest {
     
             current_block += 1;
 
-            let gas_threshold_reached = current_gas >= gas_threshold;
-            let txs_threshold_reached = current_txs >= txs_threshold;
-            let blocks_threshold_reached = current_blocks >= blocks_threshold;
+            let gas_threshold_reached = gas_threshold > 0 && current_gas >= gas_threshold;
+            let txs_threshold_reached = txs_threshold > 0 && current_txs >= txs_threshold;
+            let blocks_threshold_reached = blocks_threshold > 0 && current_blocks >= blocks_threshold;
             
             let thresholds_reached = gas_threshold_reached || txs_threshold_reached || blocks_threshold_reached;
 

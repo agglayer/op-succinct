@@ -217,7 +217,7 @@ where
     
         if gas_threshold > 0 || txs_threshold > 0 || blocks_threshold > 0 {
             info!(
-                "Generating thresholds requests from {} to {} (gas threshold = {}, txs threshold = {}, blocks threshold = {})",
+                "Evaluating from block {} to block {} (gas threshold = {}, txs threshold = {}, blocks threshold = {})",
                 latest_proposed_block_number, finalized_block_number, gas_threshold, txs_threshold, blocks_threshold
             );
     

@@ -32,6 +32,8 @@ pub struct ProgramConfig {
     pub agg_pk: Arc<SP1ProvingKey>,
     pub commitments: CommitmentConfig,
     pub gas_threshold: u64,
+    pub txs_threshold: u64,
+    pub blocks_threshold: u64,
 }
 
 #[derive(Clone)]

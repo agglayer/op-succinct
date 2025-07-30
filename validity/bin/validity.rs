@@ -63,6 +63,8 @@ async fn main() -> Result<()> {
         safe_db_fallback: env_config.safe_db_fallback,
         grpc_addr: env_config.grpc_addr,
         gas_threshold: env_config.gas_threshold,
+        txs_threshold: env_config.txs_threshold,
+        blocks_threshold: env_config.blocks_threshold,
     };
 
     let l1_provider = ProviderBuilder::new().connect_http(env_config.l1_rpc.clone());

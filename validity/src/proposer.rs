@@ -106,8 +106,10 @@ where
         let rollup_config_hash = hash_rollup_config(fetcher.rollup_config.as_ref().unwrap());
 
         let gas_threshold = requester_config.gas_threshold;
-        if gas_threshold > 0 {
-            info!("Aggregation strategy: using gas threshold of {}", gas_threshold);
+        let txs_threshold = requester_config.txs_threshold;
+        let blocks_threshold = requester_config.blocks_threshold;
+        if gas_threshold > 0 || requester_config.txs_threshold > 0 || requester_config.blocks_threshold > 0 {
+            info!("Aggregation strategy: using gas threshold of {}, txs threshold of {}, and blocks threshold of {}", gas_threshold, txs_threshold, blocks_threshold);
         } else {
             info!("Aggregation strategy: using block range [start_block, end_block]");
         }
@@ -123,6 +125,8 @@ where
                 rollup_config_hash,
             },
             gas_threshold,
+            txs_threshold,
+            blocks_threshold,
         };
 
         // Initialize the proof requester.
@@ -197,6 +201,8 @@ where
         };
     
         let gas_threshold = self.program_config.gas_threshold;
+        let txs_threshold = self.program_config.txs_threshold;
+        let blocks_threshold = self.program_config.blocks_threshold;
         let mut new_range_requests = Vec::new();
     
         // Determine request mode (Real or Mock)
@@ -209,10 +215,10 @@ where
         let l1_chain_id = self.requester_config.l1_chain_id;
         let l2_chain_id = self.requester_config.l2_chain_id;
     
-        if gas_threshold > 0 {
+        if gas_threshold > 0 || txs_threshold > 0 || blocks_threshold > 0 {
             info!(
-                "Generating gas-based requests from {} to {} (gas threshold = {})",
-                latest_proposed_block_number, finalized_block_number, gas_threshold
+                "Generating thresholds requests from {} to {} (gas threshold = {}, txs threshold = {}, blocks threshold = {})",
+                latest_proposed_block_number, finalized_block_number, gas_threshold, txs_threshold, blocks_threshold
             );
     
             let mut start_block = self
@@ -230,11 +236,13 @@ where
             }
 
             let split_requests =
-                OPSuccinctRequest::create_range_requests_respecting_gas_threshold(
+                OPSuccinctRequest::create_range_requests_respecting_thresholds(
                     mode,
                     start_block,
                     finalized_block_number,
                     gas_threshold,
+                    txs_threshold,
+                    blocks_threshold,
                     self.program_config.commitments.range_vkey_commitment,
                     self.program_config.commitments.rollup_config_hash,
                     l1_chain_id,
@@ -244,11 +252,11 @@ where
                 .await?;
     
             if !split_requests.is_empty() {
-                info!("Gas-threshold request created starting at block {}", start_block);
+                info!("Thresholds request created starting at block {}", start_block);
                 new_range_requests.extend(split_requests);
             } else {
                 debug!(
-                    "Gas threshold not met yet from block {}. Will try again later.",
+                    "Thresholds not met yet from block {}. Will try again later.",
                     start_block
                 );
             }

@@ -123,6 +123,8 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         grpc_addr: get_env_var("GRPC_ADDRESS", Some("[::1]:50051".to_string()))?,
         log_format: get_env_var("LOG_FORMAT", Some("pretty".to_string()))?,
         gas_threshold: get_env_var("GAS_THRESHOLD", Some(0))?,
+        txs_threshold: get_env_var("TXS_THRESHOLD", Some(0))?,
+        blocks_threshold: get_env_var("BLOCKS_THRESHOLD", Some(0))?,
     };
 
     Ok(config)

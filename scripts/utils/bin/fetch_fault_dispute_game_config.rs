@@ -1,38 +1,19 @@
+use std::{env, sync::Arc};
+
 use alloy_eips::BlockId;
 use anyhow::Result;
-use op_succinct_host_utils::fetcher::{OPSuccinctDataFetcher, RPCMode};
-use op_succinct_scripts::config_common::{
-    find_project_root, get_shared_config_data, get_workspace_root, parse_addresses,
-    write_config_file, TWO_WEEKS_IN_SECONDS,
+use fault_proof::config::FaultDisputeGameConfig;
+use op_succinct_host_utils::{
+    fetcher::{OPSuccinctDataFetcher, RPCMode},
+    host::OPSuccinctHost,
+    OP_SUCCINCT_FAULT_DISPUTE_GAME_CONFIG_PATH,
 };
-use serde::{Deserialize, Serialize};
+use op_succinct_proof_utils::initialize_host;
+use op_succinct_scripts::config_common::{
+    find_project_root, get_shared_config_data, parse_addresses, write_config_file,
+    TWO_WEEKS_IN_SECONDS,
+};
 use serde_json::Value;
-use std::env;
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-/// The config for deploying the OPSuccinctFaultDisputeGame.
-/// Note: The fields should be in alphabetical order for Solidity to parse it correctly.
-struct FaultDisputeGameConfig {
-    aggregation_vkey: String,
-    challenger_addresses: Vec<String>,
-    challenger_bond_wei: u64,
-    dispute_game_finality_delay_seconds: u64,
-    fallback_timeout_fp_secs: u64,
-    game_type: u32,
-    initial_bond_wei: u64,
-    max_challenge_duration: u64,
-    max_prove_duration: u64,
-    optimism_portal2_address: String,
-    permissionless_mode: bool,
-    proposer_addresses: Vec<String>,
-    range_vkey_commitment: String,
-    rollup_config_hash: String,
-    starting_l2_block_number: u64,
-    starting_root: String,
-    use_sp1_mock_verifier: bool,
-    verifier_address: String,
-}
 
 /// Updates and generates the fault dispute game configuration file.
 ///
@@ -92,8 +73,8 @@ struct FaultDisputeGameConfig {
 /// needed for the Solidity deployment scripts.
 async fn update_fdg_config() -> Result<()> {
     let data_fetcher = OPSuccinctDataFetcher::new_with_rollup_config().await?;
+    let host = initialize_host(Arc::new(data_fetcher.clone()));
     let shared_config = get_shared_config_data().await?;
-    let workspace_root = get_workspace_root()?;
 
     // Game configuration.
     let game_type = env::var("GAME_TYPE").unwrap_or("42".to_string()).parse().unwrap();
@@ -149,8 +130,9 @@ async fn update_fdg_config() -> Result<()> {
     let starting_l2_block_number = match env::var("STARTING_L2_BLOCK_NUMBER") {
         Ok(n) => n.parse().unwrap(),
         Err(_) => {
-            let latest_finalized_header =
-                data_fetcher.get_l2_header(BlockId::finalized()).await.unwrap();
+            // Use finalized block minus the finality delay as a starting point
+            let finalized_l2_header = data_fetcher.get_l2_header(BlockId::finalized()).await?;
+            let finalized_l2_block = finalized_l2_header.number;
 
             let block_time = &data_fetcher
                 .rollup_config
@@ -158,9 +140,17 @@ async fn update_fdg_config() -> Result<()> {
                 .ok_or(anyhow::anyhow!("Rollup config not found"))?
                 .block_time;
 
-            let num_blocks_to_subtract = dispute_game_finality_delay_seconds / block_time;
+            let num_blocks_for_finality = dispute_game_finality_delay_seconds / block_time;
+            let search_start = finalized_l2_block.saturating_sub(num_blocks_for_finality);
 
-            latest_finalized_header.number.saturating_sub(num_blocks_to_subtract)
+            // Now search for the highest finalized block with available data
+            let finalized_l2_block_number =
+                match host.get_finalized_l2_block_number(&data_fetcher, search_start).await? {
+                    Some(block_num) => block_num,
+                    None => search_start,
+                };
+
+            finalized_l2_block_number.saturating_sub(num_blocks_for_finality)
         }
     };
 
@@ -196,8 +186,11 @@ async fn update_fdg_config() -> Result<()> {
         verifier_address: shared_config.verifier_address,
     };
 
-    let config_path = workspace_root.join("contracts/opsuccinctfdgconfig.json");
-    write_config_file(&fdg_config, &config_path, "Fault Dispute Game")?;
+    write_config_file(
+        &fdg_config,
+        &OP_SUCCINCT_FAULT_DISPUTE_GAME_CONFIG_PATH,
+        "Fault Dispute Game",
+    )?;
 
     Ok(())
 }

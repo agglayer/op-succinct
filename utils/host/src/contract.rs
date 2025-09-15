@@ -30,6 +30,15 @@ sol! {
         external
         payable
         whenNotOptimistic;
+
+        function dgfProposeL2Output(
+            bytes32 _configName,
+            bytes32 _outputRoot,
+            uint256 _l2BlockNumber,
+            uint256 _l1BlockNumber,
+            bytes memory _proof,
+            address _proverAddress
+        ) external payable whenNotOptimistic returns (address _game);
     }
 }
 
@@ -124,5 +133,11 @@ sol! {
     #[sol(rpc)]
     contract SP1Blobstream {
         uint64 public latestBlock;
+    }
+}
+
+impl PartialEq for GameStatus {
+    fn eq(&self, other: &Self) -> bool {
+        *self as u8 == *other as u8
     }
 }

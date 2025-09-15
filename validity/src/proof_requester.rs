@@ -10,10 +10,13 @@ use op_succinct_host_utils::{
 };
 use op_succinct_proof_utils::get_range_elf_embedded;
 use sp1_sdk::{
-    network::{proto::network::ExecutionStatus, FulfillmentStrategy},
+    network::{proto::types::ExecutionStatus, FulfillmentStrategy},
     NetworkProver, SP1Proof, SP1ProofMode, SP1ProofWithPublicValues, SP1Stdin, SP1_CIRCUIT_VERSION,
 };
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tracing::{debug, info, warn};
 
 use crate::{
@@ -153,6 +156,8 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
             .strategy(self.range_strategy)
             .skip_simulation(true)
             .cycle_limit(1_000_000_000_000)
+            .gas_limit(1_000_000_000_000)
+            .timeout(Duration::from_secs(4 * 60 * 60))
             .request_async()
             .await
         {
@@ -173,6 +178,7 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
             .prove(&self.program_config.agg_pk, &stdin)
             .mode(self.agg_mode)
             .strategy(self.agg_strategy)
+            .timeout(Duration::from_secs(4 * 60 * 60))
             .request_async()
             .await
         {
@@ -204,7 +210,11 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
         let network_prover = self.network_prover.clone();
         // Move the CPU-intensive operation to a dedicated thread.
         let (pv, report) = match tokio::task::spawn_blocking(move || {
-            network_prover.execute(get_range_elf_embedded(), &stdin).run()
+            network_prover
+                .execute(get_range_elf_embedded(), &stdin)
+                .calculate_gas(true)
+                .deferred_proof_verification(false)
+                .run()
         })
         .await?
         {
@@ -328,7 +338,11 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
         let network_prover = self.network_prover.clone();
         // Move the CPU-intensive operation to a dedicated thread.
         let (pv, report) = match tokio::task::spawn_blocking(move || {
-            network_prover.execute(AGGREGATION_ELF, &stdin).deferred_proof_verification(false).run()
+            network_prover
+                .execute(AGGREGATION_ELF, &stdin)
+                .calculate_gas(true)
+                .deferred_proof_verification(false)
+                .run()
         })
         .await?
         {
@@ -524,6 +538,19 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
                 } else {
                     let proof_id = self.request_range_proof(stdin).await?;
                     self.db_client.update_request_to_prove(request.id, proof_id).await?;
+
+                    info!(
+                        proof_id = request.id,
+                        start_block = request.start_block,
+                        end_block = request.end_block,
+                        proof_request_time = ?request.created_at,
+                        total_tx_fees = %request.total_tx_fees,
+                        total_transactions = request.total_nb_transactions,
+                        witnessgen_duration_s = request.witnessgen_duration,
+                        total_eth_gas_used = request.total_eth_gas_used,
+                        total_l1_fees = %request.total_l1_fees,
+                        "Range proof request submitted to Succinct network"
+                    );
                 }
             }
             RequestType::Aggregation => {
@@ -533,6 +560,17 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
                 } else {
                     let proof_id = self.request_agg_proof(stdin).await?;
                     self.db_client.update_request_to_prove(request.id, proof_id).await?;
+
+                    info!(
+                        proof_id = request.id,
+                        start_block = request.start_block,
+                        end_block = request.end_block,
+                        proof_request_time = ?request.created_at,
+                        witnessgen_duration_s = request.witnessgen_duration,
+                        checkpointed_l1_block_number = request.checkpointed_l1_block_number,
+                        checkpointed_l1_block_hash = ?request.checkpointed_l1_block_hash,
+                        "Aggregation proof request submitted to Succinct network"
+                    );
                 }
             }
         }

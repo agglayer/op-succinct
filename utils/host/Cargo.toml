@@ -29,6 +29,9 @@ kona-rpc.workspace = true
 # hana
 hana-host.workspace = true
 
+# hokulea
+hokulea-host-bin.workspace = true
+
 # alloy
 alloy-consensus.workspace = true
 alloy-contract.workspace = true
@@ -57,6 +60,10 @@ serde_json.workspace = true
 strum.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+lazy_static.workspace = true
+
+# cargo metadata
+cargo_metadata.workspace = true
 
 # logging and telemetry
 tracing-subscriber = { workspace = true, features = ["env-filter"] }

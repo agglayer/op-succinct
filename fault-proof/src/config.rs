@@ -3,6 +3,7 @@ use std::env;
 use alloy_primitives::Address;
 use alloy_transport_http::reqwest::Url;
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
 pub struct ProposerConfig {
@@ -56,6 +57,10 @@ pub struct ProposerConfig {
 
     /// The metrics port.
     pub metrics_port: u16,
+
+    /// Maximum concurrent proving tasks allowed in fast finality mode.
+    /// This limit prevents game creation when proving capacity is reached.
+    pub fast_finality_proving_limit: u64,
 }
 
 impl ProposerConfig {
@@ -90,6 +95,9 @@ impl ProposerConfig {
                 .parse()?,
             metrics_port: env::var("PROPOSER_METRICS_PORT")
                 .unwrap_or("9000".to_string())
+                .parse()?,
+            fast_finality_proving_limit: env::var("FAST_FINALITY_PROVING_LIMIT")
+                .unwrap_or("1".to_string())
                 .parse()?,
         })
     }
@@ -161,4 +169,29 @@ impl ChallengerConfig {
                 .parse()?,
         })
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+/// The config for deploying the OPSuccinctFaultDisputeGame.
+/// Note: The fields should be in alphabetical order for Solidity to parse it correctly.
+pub struct FaultDisputeGameConfig {
+    pub aggregation_vkey: String,
+    pub challenger_addresses: Vec<String>,
+    pub challenger_bond_wei: u64,
+    pub dispute_game_finality_delay_seconds: u64,
+    pub fallback_timeout_fp_secs: u64,
+    pub game_type: u32,
+    pub initial_bond_wei: u64,
+    pub max_challenge_duration: u64,
+    pub max_prove_duration: u64,
+    pub optimism_portal2_address: String,
+    pub permissionless_mode: bool,
+    pub proposer_addresses: Vec<String>,
+    pub range_vkey_commitment: String,
+    pub rollup_config_hash: String,
+    pub starting_l2_block_number: u64,
+    pub starting_root: String,
+    pub use_sp1_mock_verifier: bool,
+    pub verifier_address: String,
 }

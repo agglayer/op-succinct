@@ -65,7 +65,13 @@ pub enum RPCMode {
     L2Node,
 }
 
-fn get_rpcs() -> RPCConfig {
+/// Gets the RPC URLs from environment variables.
+///
+/// L1_RPC: The L1 RPC URL.
+/// L1_BEACON_RPC: The L1 beacon RPC URL.
+/// L2_RPC: The L2 RPC URL.
+/// L2_NODE_RPC: The L2 node RPC URL.
+pub fn get_rpcs_from_env() -> RPCConfig {
     let l1_rpc = env::var("L1_RPC").expect("L1_RPC must be set");
     let l1_beacon_rpc = env::var("L1_BEACON_RPC").expect("L1_BEACON_RPC must be set");
     let l2_rpc = env::var("L2_RPC").expect("L2_RPC must be set");
@@ -101,7 +107,7 @@ pub struct FeeData {
 impl OPSuccinctDataFetcher {
     /// Gets the RPC URL's and saves the rollup config for the chain to the rollup config file.
     pub fn new() -> Self {
-        let rpc_config = get_rpcs();
+        let rpc_config = get_rpcs_from_env();
 
         let l1_provider =
             Arc::new(ProviderBuilder::default().connect_http(rpc_config.l1_rpc.clone()));
@@ -119,7 +125,7 @@ impl OPSuccinctDataFetcher {
 
     /// Initialize the fetcher with a rollup config.
     pub async fn new_with_rollup_config() -> Result<Self> {
-        let rpc_config = get_rpcs();
+        let rpc_config = get_rpcs_from_env();
 
         let l1_provider =
             Arc::new(ProviderBuilder::default().connect_http(rpc_config.l1_rpc.clone()));
@@ -155,43 +161,6 @@ impl OPSuccinctDataFetcher {
         } else {
             bail!("Failed to get L2 head");
         }
-    }
-
-    /// Get the fee data for a range of blocks. Extracts the l1 fee data from the receipts.
-    pub async fn get_l2_fee_data_range(&self, start: u64, end: u64) -> Result<Vec<FeeData>> {
-        let l2_provider = self.l2_provider.clone();
-
-        use futures::stream::{self, StreamExt};
-
-        // Only fetch 100 receipts at a time to better use system resources. Increases stability.
-        let fee_data = stream::iter(start..=end)
-            .map(|block_number| {
-                let l2_provider = l2_provider.clone();
-                async move {
-                    let receipt =
-                        l2_provider.get_block_receipts(block_number.into()).await.unwrap();
-                    let transactions = receipt.unwrap();
-                    let block_fee_data: Vec<FeeData> = transactions
-                        .iter()
-                        .enumerate()
-                        .map(|(tx_index, tx)| FeeData {
-                            block_number,
-                            tx_index: tx_index as u64,
-                            tx_hash: tx.inner.transaction_hash,
-                            l1_gas_cost: U256::from(tx.l1_block_info.l1_fee.unwrap_or(0)),
-                            tx_fee: tx.inner.effective_gas_price * tx.inner.gas_used as u128,
-                        })
-                        .collect();
-                    block_fee_data
-                }
-            })
-            .buffered(100)
-            .collect::<Vec<_>>()
-            .await
-            .into_iter()
-            .flatten()
-            .collect();
-        Ok(fee_data)
     }
 
     /// Get the aggregate block statistics for a range of blocks exclusive of the start block.
@@ -230,7 +199,7 @@ impl OPSuccinctDataFetcher {
                     total_tx_fees,
                 })
             })
-            .buffered(100)
+            .buffered(10)
             .collect::<Vec<Result<BlockInfo>>>()
             .await;
 

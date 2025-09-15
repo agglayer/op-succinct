@@ -1,14 +1,20 @@
 use alloy_eips::BlockId;
 use anyhow::Result;
-use op_succinct_host_utils::fetcher::{OPSuccinctDataFetcher, RPCMode};
+use op_succinct_host_utils::{
+    fetcher::{OPSuccinctDataFetcher, RPCMode},
+    host::OPSuccinctHost,
+    OP_SUCCINCT_L2_OUTPUT_ORACLE_CONFIG_PATH,
+};
+use op_succinct_proof_utils::initialize_host;
 use op_succinct_scripts::config_common::{
-    get_address, get_shared_config_data, TWO_WEEKS_IN_SECONDS,
+    find_project_root, get_address, get_shared_config_data, write_config_file, TWO_WEEKS_IN_SECONDS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
     env, fs,
     path::{Path, PathBuf},
+    sync::Arc
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -49,6 +55,7 @@ struct L2OOConfig {
 /// - owner: Set to the address associated with the private key.
 async fn update_l2oo_config(output_dir: &Path) -> Result<()> {
     let data_fetcher = OPSuccinctDataFetcher::new_with_rollup_config().await?;
+    let host = initialize_host(Arc::new(data_fetcher.clone()));
     let shared_config = get_shared_config_data().await?;
 
     let rollup_config = data_fetcher.rollup_config.as_ref().unwrap();
@@ -80,7 +87,23 @@ async fn update_l2oo_config(output_dir: &Path) -> Result<()> {
     // Get starting block number - use latest finalized if not set.
     let starting_block_number = match env::var("STARTING_BLOCK_NUMBER") {
         Ok(n) => n.parse().unwrap(),
-        Err(_) => data_fetcher.get_l2_header(BlockId::finalized()).await.unwrap().number,
+        Err(_) => {
+            // Use finalized block minus the finalization period as a starting point
+            let finalized_l2_header = data_fetcher.get_l2_header(BlockId::finalized()).await?;
+            let finalized_l2_block = finalized_l2_header.number;
+
+            let num_blocks_for_finality = finalization_period / l2_block_time;
+            let search_start = finalized_l2_block.saturating_sub(num_blocks_for_finality);
+
+            // Now search for the highest finalized block with available data
+            let finalized_l2_block_number =
+                match host.get_finalized_l2_block_number(&data_fetcher, search_start).await? {
+                    Some(block_num) => block_num,
+                    None => search_start,
+                };
+
+            finalized_l2_block_number.saturating_sub(num_blocks_for_finality)
+        }
     };
 
     let starting_block_number_hex = format!("0x{starting_block_number:x}");
@@ -114,7 +137,11 @@ async fn update_l2oo_config(output_dir: &Path) -> Result<()> {
         op_succinct_l2_output_oracle_impl,
     };
 
+<<<<<<< HEAD
     write_l2oo_config(l2oo_config, output_dir)?;
+=======
+    write_config_file(&l2oo_config, &OP_SUCCINCT_L2_OUTPUT_ORACLE_CONFIG_PATH, "L2 Output Oracle")?;
+>>>>>>> main
 
     Ok(())
 }

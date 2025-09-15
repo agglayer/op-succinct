@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    env,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc,
@@ -91,38 +90,34 @@ where
     P: Provider + Clone + Send + Sync + 'static,
     H: OPSuccinctHost + Clone + Send + Sync + 'static,
 {
-    /// Creates a new challenger instance with the provided L1 provider with wallet and factory
+    /// Creates a new proposer instance with the provided L1 provider with wallet and factory
     /// contract instance.
     pub async fn new(
+        config: ProposerConfig,
+        network_private_key: String,
         prover_address: Address,
         signer: Signer,
         factory: DisputeGameFactoryInstance<P>,
         fetcher: Arc<OPSuccinctDataFetcher>,
         host: Arc<H>,
     ) -> Result<Self> {
-        let config = ProposerConfig::from_env()?;
-
-        // Set a default network private key to avoid an error in mock mode.
-        let private_key = env::var("NETWORK_PRIVATE_KEY").unwrap_or_else(|_| {
-            tracing::warn!(
-                "Using default NETWORK_PRIVATE_KEY of 0x01. This is only valid in mock mode."
-            );
-            "0x0000000000000000000000000000000000000000000000000000000000000001".to_string()
-        });
-
         let network_prover =
-            Arc::new(ProverClient::builder().network().private_key(&private_key).build());
+            Arc::new(ProverClient::builder().network().private_key(&network_private_key).build());
         let (range_pk, range_vk) = network_prover.setup(get_range_elf_embedded());
         let (agg_pk, _) = network_prover.setup(AGGREGATION_ELF);
+
+        let l1_provider = ProviderBuilder::default().connect_http(config.l1_rpc.clone());
+        let l2_provider = ProviderBuilder::default().connect_http(config.l2_rpc.clone());
+        let init_bond = factory.fetch_init_bond(config.game_type).await?;
 
         Ok(Self {
             config: config.clone(),
             prover_address,
             signer,
-            l1_provider: ProviderBuilder::default().connect_http(config.l1_rpc.clone()),
-            l2_provider: ProviderBuilder::default().connect_http(config.l2_rpc),
+            l1_provider,
+            l2_provider,
             factory: Arc::new(factory.clone()),
-            init_bond: factory.fetch_init_bond(config.game_type).await?,
+            init_bond,
             safe_db_fallback: config.safe_db_fallback,
             prover: SP1Prover {
                 network_prover,
@@ -137,8 +132,15 @@ where
         })
     }
 
+    /// Proves a dispute game at the given address.
+    ///
+    /// # Returns
+    /// A tuple containing:
+    /// - `TxHash`: The transaction hash of the proof submission
+    /// - `u64`: Total instruction cycles used in the proof generation
+    /// - `u64`: Total SP1 gas consumed in the proof generation
     #[tracing::instrument(name = "[[Proving]]", skip(self), fields(game_address = ?game_address))]
-    pub async fn prove_game(&self, game_address: Address) -> Result<TxHash> {
+    pub async fn prove_game(&self, game_address: Address) -> Result<(TxHash, u64, u64)> {
         tracing::info!("Attempting to prove game {:?}", game_address);
 
         let fetcher = match OPSuccinctDataFetcher::new_with_rollup_config().await {
@@ -176,28 +178,55 @@ where
         };
 
         tracing::info!("Generating Range Proof");
-        let range_proof = if self.config.mock_mode {
+        let (range_proof, total_instruction_cycles, total_sp1_gas) = if self.config.mock_mode {
             tracing::info!("Using mock mode for range proof generation");
-            let (public_values, _) =
-                self.prover.network_prover.execute(get_range_elf_embedded(), &sp1_stdin).run()?;
+            let (public_values, report) = self
+                .prover
+                .network_prover
+                .execute(get_range_elf_embedded(), &sp1_stdin)
+                .calculate_gas(true)
+                .deferred_proof_verification(false)
+                .run()?;
+
+            // Record execution stats
+            let total_instruction_cycles = report.total_instruction_count();
+            let total_sp1_gas = report.gas.unwrap_or(0);
+
+            // Update Prometheus metrics
+            ProposerGauge::TotalInstructionCycles.set(total_instruction_cycles as f64);
+            ProposerGauge::TotalSP1Gas.set(total_sp1_gas as f64);
+
+            tracing::info!(
+                total_instruction_cycles = total_instruction_cycles,
+                total_sp1_gas = total_sp1_gas,
+                "Captured execution stats for range proof"
+            );
 
             // Create a mock range proof with the public values.
-            SP1ProofWithPublicValues::create_mock_proof(
+            let proof = SP1ProofWithPublicValues::create_mock_proof(
                 &self.prover.range_pk,
                 public_values,
                 SP1ProofMode::Compressed,
                 SP1_CIRCUIT_VERSION,
-            )
+            );
+
+            (proof, total_instruction_cycles, total_sp1_gas)
         } else {
-            self.prover
+            // In network mode, we don't have access to execution stats
+            let proof = self
+                .prover
                 .network_prover
                 .prove(&self.prover.range_pk, &sp1_stdin)
                 .compressed()
                 .strategy(FulfillmentStrategy::Hosted)
                 .skip_simulation(true)
                 .cycle_limit(1_000_000_000_000)
+                .gas_limit(1_000_000_000_000)
+                .timeout(Duration::from_secs(4 * 60 * 60))
                 .run_async()
-                .await?
+                .await?;
+
+            (proof, 0, 0)
         };
 
         tracing::info!("Preparing Stdin for Agg Proof");
@@ -253,6 +282,7 @@ where
                 .network_prover
                 .prove(&self.prover.agg_pk, &sp1_stdin)
                 .groth16()
+                .timeout(Duration::from_secs(4 * 60 * 60))
                 .run_async()
                 .await?
         };
@@ -264,7 +294,7 @@ where
             .send_transaction_request(self.config.l1_rpc.clone(), transaction_request)
             .await?;
 
-        Ok(receipt.transaction_hash)
+        Ok((receipt.transaction_hash, total_instruction_cycles, total_sp1_gas))
     }
 
     /// Creates a new game with the given parameters.
@@ -308,10 +338,17 @@ where
             })
             .context("Could not find DisputeGameCreated event in transaction receipt logs")?;
 
+        // Fetch game index after creation
+        let game_count = self.factory.gameCount().call().await?;
+        let game_index = game_count - U256::from(1);
+
         tracing::info!(
-            "\x1b[1mNew game at address {:?} created with tx {:?}\x1b[0m",
-            game_address,
-            receipt.transaction_hash
+            game_index = %game_index,
+            game_address = ?game_address,
+            l2_block_end = %l2_block_number,
+            parent_index = parent_game_index,
+            tx_hash = ?receipt.transaction_hash,
+            "Game created successfully"
         );
 
         if self.config.fast_finality_mode {
@@ -391,7 +428,7 @@ where
     }
 
     /// Handles claiming bonds from resolved games.
-    #[tracing::instrument(name = "[[Claiming Bonds]]", skip(self))]
+    #[tracing::instrument(name = "[[Claiming Proposer Bonds]]", skip(self))]
     async fn handle_bond_claiming(&self) -> Result<Action> {
         if let Some(game_address) = self
             .factory
@@ -399,17 +436,24 @@ where
                 self.config.game_type,
                 self.config.max_games_to_check_for_bond_claiming,
                 self.prover_address,
+                Mode::Proposer,
             )
             .await?
         {
-            tracing::info!("Attempting to claim bond from game {:?}", game_address);
+            tracing::info!(
+                "Attempting to claim bond from game {:?} where proposer won",
+                game_address
+            );
 
             // Create a contract instance for the game
             let game = OPSuccinctFaultDisputeGame::new(game_address, self.l1_provider.clone());
 
+            // Get L2 block number for context
+            let l2_block_number = game.l2BlockNumber().call().await?;
+
             // Create a transaction to claim credit
             let transaction_request =
-                game.claimCredit(self.prover_address).into_transaction_request();
+                game.claimCredit(self.prover_address).gas(200_000).into_transaction_request();
 
             // Sign and send the transaction
             match self
@@ -419,21 +463,30 @@ where
             {
                 Ok(receipt) => {
                     tracing::info!(
-                        "\x1b[1mSuccessfully claimed bond from game {:?} with tx {:?}\x1b[0m",
-                        game_address,
-                        receipt.transaction_hash
+                        game_address = ?game_address,
+                        l2_block_end = %l2_block_number,
+                        tx_hash = ?receipt.transaction_hash,
+                        "Bond claimed successfully"
                     );
 
                     Ok(Action::Performed)
                 }
-                Err(e) => Err(anyhow::anyhow!(
-                    "Failed to claim bond from game {:?}: {:?}",
-                    game_address,
-                    e
-                )),
+                Err(e) => {
+                    tracing::error!(
+                        game_address = ?game_address,
+                        l2_block_end = %l2_block_number,
+                        error = %e,
+                        "Bond claiming failed"
+                    );
+                    Err(anyhow::anyhow!(
+                        "Failed to claim proposer bond from game {:?}: {:?}",
+                        game_address,
+                        e
+                    ))
+                }
             }
         } else {
-            tracing::info!("No new games to claim bonds from");
+            tracing::info!("No games found where proposer won to claim bonds from");
 
             Ok(Action::Skipped)
         }
@@ -468,7 +521,18 @@ where
             self.factory.get_anchor_l2_block_number(self.config.game_type).await?;
         ProposerGauge::AnchorGameL2BlockNumber.set(anchor_game_l2_block_number.to::<u64>() as f64);
 
+        // Update active proving tasks metric
+        let active_proving = self.count_active_proving_tasks().await;
+        ProposerGauge::ActiveProvingTasks.set(active_proving as f64);
+
         Ok(())
+    }
+
+    /// Count active proving tasks
+    async fn count_active_proving_tasks(&self) -> u64 {
+        let tasks = self.tasks.lock().await;
+        tasks.iter().filter(|(_, (_, info))| matches!(info, TaskInfo::GameProving { .. })).count()
+            as u64
     }
 
     /// Runs the proposer indefinitely.
@@ -627,11 +691,15 @@ where
         let active_count = tasks.len();
         if active_count > 0 {
             let mut task_counts: HashMap<&str, usize> = HashMap::new();
+            let mut proving_games: Vec<String> = Vec::new();
 
             for (_, (_, info)) in tasks.iter() {
                 let task_type = match info {
                     TaskInfo::GameCreation { .. } => "GameCreation",
-                    TaskInfo::GameProving { .. } => "GameProving",
+                    TaskInfo::GameProving { game_address } => {
+                        proving_games.push(format!("{game_address:?}"));
+                        "GameProving"
+                    }
                     TaskInfo::GameResolution => "GameResolution",
                     TaskInfo::BondClaim => "BondClaim",
                 };
@@ -644,6 +712,11 @@ where
                 .collect();
 
             tracing::info!("Active tasks: {} ({})", active_count, task_types.join(", "));
+
+            // Log specific games being proven
+            if !proving_games.is_empty() {
+                tracing::info!("Games being proven: {}", proving_games.join(", "));
+            }
         }
     }
 
@@ -653,7 +726,6 @@ where
     /// - Ok(true): Task was successfully spawned
     /// - Ok(false): No work needed (proposal interval not elapsed or no finalized blocks)
     /// - Err: Actual error occurred during task spawning
-    #[tracing::instrument(name = "[[Proposing]]", skip(self))]
     async fn spawn_game_creation_task(&self) -> Result<bool> {
         // First check if we should create a game
         let should_create = self.should_create_game().await?;
@@ -671,7 +743,7 @@ where
                     Ok(())
                 }
                 Ok(None) => Ok(()),
-                Err(e) => Err(e),
+                Err(e) => Err(anyhow::anyhow!("error in game creation: {:?}", e)),
             }
         });
 
@@ -686,6 +758,21 @@ where
 
     /// Check if we should create a game
     async fn should_create_game(&self) -> Result<bool> {
+        // In fast finality mode, check if we're at proving capacity
+        // TODO(fakedev9999): Consider unifying proving concurrency control for both fast finality
+        // and defense proving with a priority system.
+        if self.config.fast_finality_mode {
+            let active_proving = self.count_active_proving_tasks().await;
+            if active_proving >= self.config.fast_finality_proving_limit {
+                tracing::info!(
+                    "Skipping game creation in fast finality mode: proving at capacity ({}/{})",
+                    active_proving,
+                    self.config.fast_finality_proving_limit
+                );
+                return Ok(false);
+            }
+        }
+
         // Use the existing logic from handle_game_creation
         let latest_valid_proposal =
             self.factory.get_latest_valid_proposal(self.l2_provider.clone()).await?;
@@ -752,6 +839,7 @@ where
             .factory
             .get_oldest_defensible_game_address(
                 self.config.max_games_to_check_for_defense,
+                self.l1_provider.clone(),
                 self.l2_provider.clone(),
             )
             .await?
@@ -802,22 +890,46 @@ where
                 // Use a runtime for the blocking task to handle async operations
                 let rt = tokio::runtime::Handle::current();
                 rt.block_on(async move {
-                    let tx_hash = proposer.prove_game(game_address).await?;
+                    let start_time = std::time::Instant::now();
+                    let (tx_hash, total_instruction_cycles, total_sp1_gas) =
+                        proposer.prove_game(game_address).await?;
+
+                    // Record successful proving
+                    ProposerGauge::GamesProven.increment(1.0);
+                    ProposerGauge::ProvingDurationSeconds.set(start_time.elapsed().as_secs_f64());
+
                     tracing::info!(
-                        "\x1b[1mSuccessfully proved game {:?} with tx {:?}\x1b[0m",
-                        game_address,
-                        tx_hash
+                        game_address = ?game_address,
+                        l2_block_start = start_block,
+                        l2_block_end = end_block,
+                        tx_hash = ?tx_hash,
+                        duration_s = start_time.elapsed().as_secs_f64(),
+                        total_instruction_cycles = total_instruction_cycles,
+                        total_sp1_gas = total_sp1_gas,
+                        "Game proven successfully"
                     );
                     Ok(())
                 })
             })
         } else {
             tokio::spawn(async move {
-                let tx_hash = proposer.prove_game(game_address).await?;
+                let start_time = std::time::Instant::now();
+                let (tx_hash, total_instruction_cycles, total_sp1_gas) =
+                    proposer.prove_game(game_address).await?;
+
+                // Record successful proving
+                ProposerGauge::GamesProven.increment(1.0);
+                ProposerGauge::ProvingDurationSeconds.set(start_time.elapsed().as_secs_f64());
+
                 tracing::info!(
-                    "\x1b[1mSuccessfully proved game {:?} with tx {:?}\x1b[0m",
-                    game_address,
-                    tx_hash
+                    game_address = ?game_address,
+                    l2_block_start = start_block,
+                    l2_block_end = end_block,
+                    tx_hash = ?tx_hash,
+                    duration_s = start_time.elapsed().as_secs_f64(),
+                    total_instruction_cycles = total_instruction_cycles,
+                    total_sp1_gas = total_sp1_gas,
+                    "Game proven successfully"
                 );
                 Ok(())
             })
@@ -834,6 +946,7 @@ where
     /// - Ok(true): Resolution task was successfully spawned
     /// - Ok(false): No work needed (no games to resolve)
     /// - Err: Actual error occurred during task spawning
+    #[tracing::instrument(name = "[[Proposer Resolving]]", skip(self))]
     async fn spawn_game_resolution_task(&self) -> Result<bool> {
         let proposer = self.clone();
         let task_id = self.next_task_id.fetch_add(1, Ordering::Relaxed);
@@ -847,7 +960,6 @@ where
                     proposer.signer.clone(),
                     proposer.config.l1_rpc.clone(),
                     proposer.l1_provider.clone(),
-                    proposer.l2_provider.clone(),
                 )
                 .await
         });
@@ -872,6 +984,7 @@ where
                 self.config.game_type,
                 self.config.max_games_to_check_for_bond_claiming,
                 self.prover_address,
+                Mode::Proposer,
             )
             .await?
             .is_some();

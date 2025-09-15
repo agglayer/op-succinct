@@ -137,11 +137,7 @@ async fn update_l2oo_config(output_dir: &Path) -> Result<()> {
         op_succinct_l2_output_oracle_impl,
     };
 
-<<<<<<< HEAD
     write_l2oo_config(l2oo_config, output_dir)?;
-=======
-    write_config_file(&l2oo_config, &OP_SUCCINCT_L2_OUTPUT_ORACLE_CONFIG_PATH, "L2 Output Oracle")?;
->>>>>>> main
 
     Ok(())
 }

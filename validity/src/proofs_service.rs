@@ -1,5 +1,6 @@
 use alloy_primitives::{hex::FromHex, FixedBytes};
 use bincode::Options;
+use std::{fs, path::PathBuf};
 use tonic::{Code, Request, Response, Status};
 use tracing::{debug, info, warn};
 
@@ -9,7 +10,7 @@ use crate::{
 };
 use op_succinct_grpc::proofs::{
     proofs_server::Proofs, AggProofRequest, AggProofResponse, GetMockProofRequest,
-    GetMockProofResponse,
+    GetMockProofResponse, GetWitnessRequest, GetWitnessResponse,
 };
 use op_succinct_host_utils::{host::OPSuccinctHost, metrics::MetricsGauge};
 use std::{sync::Arc, time::Instant};
@@ -62,6 +63,18 @@ impl<H> Proofs for Service<H>
 where
     H: OPSuccinctHost,
 {
+    async fn get_witness(
+        &self,
+        request: Request<GetWitnessRequest>,
+    ) -> Result<Response<GetWitnessResponse>, Status> {
+        // read the stdin from the file
+        let stdin_filename = "stdin_agg.bin";
+        let stdin_path = PathBuf::from(&stdin_filename);
+        let stdin = fs::read(&stdin_path).unwrap();
+
+        Ok(Response::new(GetWitnessResponse { witness: stdin.into() }))
+    }
+
     #[tracing::instrument(name = "proofs.request_agg_proof", skip(self, request))]
     async fn request_agg_proof(
         // Update method name
@@ -185,6 +198,21 @@ where
             duration_s = duration.as_secs(),
             "Completed witness generation"
         );
+
+        let stdin_filename = "stdin_agg.bin";
+        let stdin_path = PathBuf::from(&stdin_filename);
+        match bincode::serialize(&stdin) {
+            Ok(stdin_bytes) => {
+                if let Err(e) = fs::write(&stdin_path, &stdin_bytes) {
+                    warn!("Failed to write stdin to file {}: {}", stdin_filename, e);
+                } else {
+                    info!("Wrote stdin to file: {}", stdin_filename);
+                }
+            }
+            Err(e) => {
+                warn!("Failed to serialize stdin: {}", e);
+            }
+        }
 
         let reply: AggProofResponse;
         if self.proof_requester.mock {

@@ -16,7 +16,7 @@ jobs:
       - image=ubuntu22-full-x64
       - run-id=${{ github.run_id }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup CI
         uses: ./.github/actions/setup

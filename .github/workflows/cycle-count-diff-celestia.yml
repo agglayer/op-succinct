@@ -19,7 +19,7 @@ jobs:
       
     steps:
       - name: Checkout Repository (for local actions)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup CI
         uses: ./.github/actions/setup
@@ -39,7 +39,7 @@ jobs:
           submodules: recursive
 
       - name: Checkout Base Branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           path: old_code

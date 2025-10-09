@@ -7,6 +7,7 @@ use anyhow::{anyhow, Context, Result};
 use futures_util::{stream, StreamExt, TryStreamExt};
 use op_succinct_client_utils::{boot::hash_rollup_config, types::u32_to_u8};
 use op_succinct_elfs::AGGREGATION_ELF;
+#[cfg(feature = "agglayer")]
 use op_succinct_grpc::proofs::proofs_server::ProofsServer;
 use op_succinct_host_utils::{
     fetcher::OPSuccinctDataFetcher, host::OPSuccinctHost, metrics::MetricsGauge,
@@ -30,6 +31,7 @@ use crate::{
 };
 
 /// Configuration for the driver.
+#[derive(Clone)]
 pub struct DriverConfig {
     pub network_prover: Arc<NetworkProver>,
     pub fetcher: Arc<OPSuccinctDataFetcher>,
@@ -1338,20 +1340,23 @@ where
         // Initialize the metrics gauges.
         ValidityGauge::init_all();
 
-        // Parse the url for the gRPC server.
-        let addr =
-            self.requester_config.grpc_addr.parse().context("Failed to parse gRPC address")?;
-        info!("Starting Agglayer gRPC server on {}", addr);
-        // Start the gRPC server
-        tokio::spawn(
-            tonic::transport::Server::builder()
-                .add_service(ProofsServer::new(crate::proofs_service::Service::new(
-                    self.proof_requester.clone(),
-                    self.program_config.clone(),
-                    self.requester_config.clone(),
-                )))
-                .serve(addr),
-        );
+        #[cfg(feature = "agglayer")]
+        { // Parse the url for the gRPC server.
+            let addr =
+                self.requester_config.grpc_addr.parse().context("Failed to parse gRPC address")?;
+            info!("Starting Agglayer gRPC server on {}", addr);
+            // Start the gRPC server
+            tokio::spawn(
+                tonic::transport::Server::builder()
+                    .add_service(ProofsServer::new(crate::proofs_service::Service::new(
+                        self.proof_requester.clone(),
+                        self.program_config.clone(),
+                        self.requester_config.clone(),
+                        self.driver_config.clone(),
+                    )))
+                    .serve(addr),
+            );
+        }
 
         // Loop interval in seconds.
         loop {
@@ -1396,13 +1401,15 @@ where
 
         // Create aggregation proofs based on the completed range proofs. Checkpoints the block hash
         // associated with the aggregation proof in advance.
-        // self.create_aggregation_proofs().await?;
+        #[cfg(not(feature = "agglayer"))]
+        self.create_aggregation_proofs().await?;
 
         // Request all unrequested proofs from the prover network.
         self.request_queued_proofs().await?;
 
         // Submit any aggregation proofs that are complete.
-        // self.submit_agg_proofs().await?;
+        #[cfg(not(feature = "agglayer"))]
+        self.submit_agg_proofs().await?;
 
         // Update the chain lock.
         self.proof_requester

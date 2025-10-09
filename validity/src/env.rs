@@ -1,8 +1,9 @@
 use std::env;
 
+use std::str::FromStr;
 use alloy_primitives::Address;
 use alloy_signer_local::PrivateKeySigner;
-use anyhow::Result;
+use anyhow::{Result, Context};
 use op_succinct_signer_utils::Signer;
 use reqwest::Url;
 use sp1_sdk::{network::FulfillmentStrategy, SP1ProofMode};
@@ -24,7 +25,6 @@ pub struct EnvironmentConfig {
     pub max_concurrent_proof_requests: u64,
     pub submission_interval: u64,
     pub mock: bool,
-    pub agglayer: bool,
     pub safe_db_fallback: bool,
     pub op_succinct_config_name: String,
     pub grpc_addr: String,
@@ -55,13 +55,17 @@ const DEFAULT_LOOP_INTERVAL: u64 = 60;
 ///
 /// Signer address and signer URL take precedence over private key.
 pub fn read_proposer_env() -> Result<EnvironmentConfig> {
-    let agglayer = get_env_var("AGGLAYER", Some(false))?;
+    #[cfg(not(feature = "agglayer"))]
+    let signer = Signer::from_env()?;
 
-    let signer = if agglayer {
-        // In agglayer mode, create a dummy signer with random address
-        Signer::LocalSigner(PrivateKeySigner::random())
+    #[cfg(feature = "agglayer")]
+    // In agglayer mode, the signer address is the prover address
+    let signer = if let Ok(prover_address_str) = std::env::var("PROVER_ADDRESS") {
+        let prover_address =
+            Address::from_str(&prover_address_str).context("Failed to parse PROVER_ADDRESS")?;
+        Signer::new_web3_signer(Url::parse("http://localhost").unwrap(), prover_address)
     } else {
-        Signer::from_env()?
+        Signer::LocalSigner(PrivateKeySigner::random())
     };
 
     // Parse strategy values
@@ -116,7 +120,6 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
             "OP_SUCCINCT_CONFIG_NAME",
             Some("opsuccinct_genesis".to_string()),
         )?,
-        agglayer: get_env_var("AGGLAYER", Some(false))?,
         grpc_addr: get_env_var("GRPC_ADDRESS", Some("[::1]:50051".to_string()))?,
         log_format: get_env_var("LOG_FORMAT", Some("pretty".to_string()))?,
     };

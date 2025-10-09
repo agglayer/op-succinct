@@ -5,7 +5,7 @@ use tracing::{debug, info, warn};
 
 use crate::{
     proof_requester::OPSuccinctProofRequester, OPSuccinctRequest, ProgramConfig, RequestMode,
-    RequesterConfig, ValidityGauge,
+    RequesterConfig, ValidityGauge, DriverConfig
 };
 use op_succinct_grpc::proofs::{
     proofs_server::Proofs, AggProofRequest, AggProofResponse, GetMockProofRequest,
@@ -21,6 +21,7 @@ where
     proof_requester: Arc<OPSuccinctProofRequester<H>>,
     program_config: ProgramConfig,
     requester_config: RequesterConfig,
+    driver_config: DriverConfig,
 }
 
 impl<H> Service<H>
@@ -31,8 +32,9 @@ where
         proof_requester: Arc<OPSuccinctProofRequester<H>>,
         program_config: ProgramConfig,
         requester_config: RequesterConfig,
+        driver_config: DriverConfig,
     ) -> Self {
-        Self { proof_requester, program_config, requester_config }
+        Self { proof_requester, program_config, requester_config, driver_config }
     }
 
     // Limit the L1 block number to the safe head if it is greater than the requested end block
@@ -150,7 +152,7 @@ where
             FixedBytes::<32>::from_hex(req.l1_block_hash).map_err(|e| {
                 Status::invalid_argument(format!("Invalid hex string for block hash: {}", e))
             })?,
-            self.requester_config.prover_address,
+            self.driver_config.signer.address()
         );
 
         info!(

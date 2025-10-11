@@ -62,10 +62,19 @@ async fn main() -> Result<()> {
         agg_proof_mode: env_config.agg_proof_mode,
         submission_interval: env_config.submission_interval,
         mock: env_config.mock,
-        prover_address: env_config.prover_address,
         safe_db_fallback: env_config.safe_db_fallback,
         op_succinct_config_name_hash,
         grpc_addr: env_config.grpc_addr,
+        use_kms_requester: env_config.use_kms_requester,
+        max_price_per_pgu: env_config.max_price_per_pgu,
+        timeout: env_config.timeout,
+        range_cycle_limit: env_config.range_cycle_limit,
+        range_gas_limit: env_config.range_gas_limit,
+        agg_cycle_limit: env_config.agg_cycle_limit,
+        agg_gas_limit: env_config.agg_gas_limit,
+        whitelist: env_config.whitelist,
+        min_auction_period: env_config.min_auction_period,
+        auction_timeout: env_config.auction_timeout,
     };
 
     let l1_provider = ProviderBuilder::new().connect_http(env_config.l1_rpc.clone());

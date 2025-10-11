@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, str::FromStr, sync::Arc, time::Duration};
+use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 
 use alloy_eips::BlockId;
 use alloy_primitives::{Address, B256, U256};
@@ -7,16 +7,23 @@ use anyhow::{anyhow, Context, Result};
 use futures_util::{stream, StreamExt, TryStreamExt};
 use op_succinct_client_utils::{boot::hash_rollup_config, types::u32_to_u8};
 use op_succinct_elfs::AGGREGATION_ELF;
+#[cfg(feature = "agglayer")]
 use op_succinct_grpc::proofs::proofs_server::ProofsServer;
 use op_succinct_host_utils::{
-    fetcher::OPSuccinctDataFetcher, host::OPSuccinctHost, metrics::MetricsGauge,
+    fetcher::OPSuccinctDataFetcher,
+    host::OPSuccinctHost,
+    metrics::MetricsGauge,
+    network::{determine_network_mode, get_network_signer},
     DisputeGameFactory::DisputeGameFactoryInstance as DisputeGameFactoryContract,
     OPSuccinctL2OutputOracle::OPSuccinctL2OutputOracleInstance as OPSuccinctL2OOContract,
 };
 use op_succinct_proof_utils::get_range_elf_embedded;
 use op_succinct_signer_utils::Signer;
 use sp1_sdk::{
-    network::proto::types::{ExecutionStatus, FulfillmentStatus},
+    network::{
+        proto::types::{ExecutionStatus, FulfillmentStatus},
+        NetworkMode,
+    },
     HashableKey, NetworkProver, Prover, ProverClient, SP1Proof, SP1ProofWithPublicValues,
 };
 use tokio::sync::Mutex;
@@ -30,6 +37,7 @@ use crate::{
 };
 
 /// Configuration for the driver.
+#[derive(Clone)]
 pub struct DriverConfig {
     pub network_prover: Arc<NetworkProver>,
     pub fetcher: Arc<OPSuccinctDataFetcher>,
@@ -85,16 +93,15 @@ where
             .add_chain_lock(requester_config.l1_chain_id, requester_config.l2_chain_id)
             .await?;
 
-        // Set a default network private key to avoid an error in mock mode.
-        let private_key = env::var("NETWORK_PRIVATE_KEY").unwrap_or_else(|_| {
-            tracing::warn!(
-                "Using default NETWORK_PRIVATE_KEY of 0x01. This is only valid in mock mode."
-            );
-            "0x0000000000000000000000000000000000000000000000000000000000000001".to_string()
-        });
-
-        let network_prover =
-            Arc::new(ProverClient::builder().network().private_key(&private_key).build());
+        // Set up the network prover.
+        let network_signer = get_network_signer(requester_config.use_kms_requester).await?;
+        let network_mode = determine_network_mode(
+            requester_config.range_proof_strategy,
+            requester_config.agg_proof_strategy,
+        )?;
+        let network_prover = Arc::new(
+            ProverClient::builder().network_for(network_mode).signer(network_signer).build(),
+        );
 
         let (range_pk, range_vk) = network_prover.setup(get_range_elf_embedded());
 
@@ -130,6 +137,15 @@ where
             requester_config.agg_proof_strategy,
             requester_config.agg_proof_mode,
             requester_config.safe_db_fallback,
+            requester_config.max_price_per_pgu,
+            requester_config.timeout,
+            requester_config.range_cycle_limit,
+            requester_config.range_gas_limit,
+            requester_config.agg_cycle_limit,
+            requester_config.agg_gas_limit,
+            requester_config.whitelist.clone(),
+            requester_config.min_auction_period,
+            requester_config.auction_timeout,
         ));
 
         let l2oo_contract =
@@ -296,12 +312,65 @@ where
             let (status, proof) =
                 self.driver_config.network_prover.get_proof_status(proof_request_id).await?;
 
+            let request_details =
+                self.driver_config.network_prover.get_proof_request(proof_request_id).await?;
+
             // Check if current time exceeds deadline. If so, the proof has timed out.
             let current_time = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_secs();
-            if current_time > status.deadline {
+
+            // Cancel the request in the network if the auction timeout is exceeded.
+            if let Some(request_details) = request_details {
+                let auction_deadline =
+                    request_details.created_at + self.requester_config.auction_timeout;
+                if self.driver_config.network_prover.network_mode() == NetworkMode::Mainnet &&
+                    request_details.fulfillment_status == FulfillmentStatus::Requested as i32 &&
+                    current_time > auction_deadline
+                {
+                    // Cancel the request in the network.
+                    self.driver_config.network_prover.cancel_request(proof_request_id).await?;
+
+                    // Mark the request as cancelled in the database.
+                    match self.proof_requester.handle_cancelled_request(request.clone()).await {
+                        Ok(_) => ValidityGauge::ProofRequestRetryCount.increment(1.0),
+                        Err(e) => {
+                            ValidityGauge::RetryErrorCount.increment(1.0);
+                            return Err(e);
+                        }
+                    }
+
+                    ValidityGauge::ProofRequestTimeoutErrorCount.increment(1.0);
+
+                    match request.req_type {
+                        RequestType::Range => {
+                            warn!(
+                                proof_id = request.id,
+                                start_block = request.start_block,
+                                end_block = request.end_block,
+                                auction_deadline = auction_deadline,
+                                current_time = current_time,
+                                "Range proof request auction deadline exceeded"
+                            );
+                        }
+                        RequestType::Aggregation => {
+                            warn!(
+                                proof_id = request.id,
+                                start_block = request.start_block,
+                                end_block = request.end_block,
+                                auction_deadline = auction_deadline,
+                                current_time = current_time,
+                                "Aggregation proof request auction deadline exceeded"
+                            );
+                        }
+                    }
+
+                    return Ok(());
+                }
+            }
+
+            if current_time > status.deadline() {
                 match self
                     .proof_requester
                     .handle_failed_request(request.clone(), status.execution_status())
@@ -316,14 +385,13 @@ where
 
                 ValidityGauge::ProofRequestTimeoutErrorCount.increment(1.0);
 
-                // Log timeout of range proof
                 match request.req_type {
                     RequestType::Range => {
                         warn!(
                             proof_id = request.id,
                             start_block = request.start_block,
                             end_block = request.end_block,
-                            deadline = status.deadline,
+                            deadline = status.deadline(),
                             current_time = current_time,
                             "Range proof request timed out"
                         );
@@ -333,7 +401,7 @@ where
                             proof_id = request.id,
                             start_block = request.start_block,
                             end_block = request.end_block,
-                            deadline = status.deadline,
+                            deadline = status.deadline(),
                             current_time = current_time,
                             "Aggregation proof request timed out"
                         );
@@ -345,7 +413,7 @@ where
 
             // If the proof request has been fulfilled, update the request to status Complete and
             // add the proof bytes to the database.
-            if status.fulfillment_status() == FulfillmentStatus::Fulfilled {
+            if status.fulfillment_status() == FulfillmentStatus::Fulfilled as i32 {
                 let proof: SP1ProofWithPublicValues = proof.unwrap();
 
                 let proof_bytes = match proof.proof {
@@ -408,7 +476,7 @@ where
                         );
                     }
                 }
-            } else if status.fulfillment_status() == FulfillmentStatus::Unfulfillable {
+            } else if status.fulfillment_status() == FulfillmentStatus::Unfulfillable as i32 {
                 // Log failure of range and aggregation proofs.
                 match request.req_type {
                     RequestType::Range => {
@@ -595,7 +663,7 @@ where
                 self.requester_config.l2_chain_id,
                 checkpointed_l1_block_number,
                 checkpointed_l1_block_hash,
-                self.requester_config.prover_address,
+                self.driver_config.signer.address(),
             );
 
             self.driver_config.driver_db_client.insert_request(&agg_request).await?;
@@ -949,7 +1017,7 @@ where
                     U256::from(completed_agg_proof.end_block),
                     U256::from(completed_agg_proof.checkpointed_l1_block_number.unwrap()),
                     completed_agg_proof.proof.as_ref().unwrap().clone().into(),
-                    self.requester_config.prover_address,
+                    self.driver_config.signer.address(),
                 )
                 .value(init_bond)
                 .into_transaction_request();
@@ -972,7 +1040,7 @@ where
                     U256::from(completed_agg_proof.end_block),
                     U256::from(completed_agg_proof.checkpointed_l1_block_number.unwrap()),
                     completed_agg_proof.proof.clone().unwrap().into(),
-                    self.requester_config.prover_address,
+                    self.driver_config.signer.address(),
                 )
                 .into_transaction_request();
 
@@ -1126,7 +1194,7 @@ where
                                 .proof_requester
                                 .handle_failed_request(
                                     request,
-                                    ExecutionStatus::UnspecifiedExecutionStatus,
+                                    ExecutionStatus::UnspecifiedExecutionStatus as i32,
                                 )
                                 .await
                             {
@@ -1152,7 +1220,7 @@ where
                             .proof_requester
                             .handle_failed_request(
                                 request,
-                                ExecutionStatus::UnspecifiedExecutionStatus,
+                                ExecutionStatus::UnspecifiedExecutionStatus as i32,
                             )
                             .await
                         {
@@ -1338,20 +1406,23 @@ where
         // Initialize the metrics gauges.
         ValidityGauge::init_all();
 
-        // Parse the url for the gRPC server.
-        let addr =
-            self.requester_config.grpc_addr.parse().context("Failed to parse gRPC address")?;
-        info!("Starting Agglayer gRPC server on {}", addr);
-        // Start the gRPC server
-        tokio::spawn(
-            tonic::transport::Server::builder()
-                .add_service(ProofsServer::new(crate::proofs_service::Service::new(
-                    self.proof_requester.clone(),
-                    self.program_config.clone(),
-                    self.requester_config.clone(),
-                )))
-                .serve(addr),
-        );
+        #[cfg(feature = "agglayer")]
+        { // Parse the url for the gRPC server.
+            let addr =
+                self.requester_config.grpc_addr.parse().context("Failed to parse gRPC address")?;
+            info!("Starting Agglayer gRPC server on {}", addr);
+            // Start the gRPC server
+            tokio::spawn(
+                tonic::transport::Server::builder()
+                    .add_service(ProofsServer::new(crate::proofs_service::Service::new(
+                        self.proof_requester.clone(),
+                        self.program_config.clone(),
+                        self.requester_config.clone(),
+                        self.driver_config.clone(),
+                    )))
+                    .serve(addr),
+            );
+        }
 
         // Loop interval in seconds.
         loop {
@@ -1396,13 +1467,15 @@ where
 
         // Create aggregation proofs based on the completed range proofs. Checkpoints the block hash
         // associated with the aggregation proof in advance.
-        // self.create_aggregation_proofs().await?;
+        #[cfg(not(feature = "agglayer"))]
+        self.create_aggregation_proofs().await?;
 
         // Request all unrequested proofs from the prover network.
         self.request_queued_proofs().await?;
 
         // Submit any aggregation proofs that are complete.
-        // self.submit_agg_proofs().await?;
+        #[cfg(not(feature = "agglayer"))]
+        self.submit_agg_proofs().await?;
 
         // Update the chain lock.
         self.proof_requester

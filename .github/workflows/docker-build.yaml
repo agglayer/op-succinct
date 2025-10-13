@@ -49,6 +49,15 @@ jobs:
             type=ref,event=tag
             type=sha
 
+      - name: Docker meta for op-succinct-agglayer
+        id: meta-succinct-agglayer
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/op-succinct-agglayer
+          tags: |
+            type=ref,event=tag
+            type=sha
+
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -86,5 +95,16 @@ jobs:
           push: true
           tags: ${{ steps.meta-succinct-eigenda.outputs.tags }}
           labels: ${{ steps.meta-succinct-eigenda.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push op-succinct-agglayer
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: validity/Dockerfile.agglayer
+          push: true
+          tags: ${{ steps.meta-succinct-agglayer.outputs.tags }}
+          labels: ${{ steps.meta-succinct-agglayer.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

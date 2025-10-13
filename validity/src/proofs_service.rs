@@ -83,7 +83,7 @@ where
                 Status::internal(format!("Failed to limit L1 block number: {}", e))
             })?;
 
-        // Check if the requested end block is less than the requested start block
+        // Check if the requested end block is less or equal than the requested start block
         if l1_limited_end_block <= req.last_proven_block {
             return Err(Status::new(
                 Code::InvalidArgument,
@@ -103,8 +103,12 @@ where
                 self.requester_config.l1_chain_id,
                 self.requester_config.l2_chain_id,
             )
-            .await
-            .unwrap();
+            .await.map_err(|_| {
+                Status::new(
+                    Code::NotFound,
+                    "No range proofs found for the requested range",
+                )
+            })?;
 
         // Error in case there's no range proofs
         // Validate the aggregation proof request

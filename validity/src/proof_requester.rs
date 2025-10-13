@@ -300,6 +300,16 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
         range_proofs: &Vec<OPSuccinctRequest>,
         req: &AggProofRequest,
     ) -> Result<bool> {
+        // If no range proofs found, validation fails
+        if range_proofs.is_empty() {
+            warn!(
+                last_proven_block = req.last_proven_block,
+                commitments = ?self.program_config.commitments,
+                "No consecutive span proof range found for request"
+            );
+            return Ok(false);
+        }
+
         debug!(
             "Validating {} aggregation proof request: start_block={}, end_block={}",
             range_proofs.len(),
@@ -313,16 +323,6 @@ impl<H: OPSuccinctHost> OPSuccinctProofRequester<H> {
                 "Range proof {}: start_block={}, end_block={}",
                 i, proof.start_block, proof.end_block
             );
-        }
-
-        // If no range proofs found, validation fails
-        if range_proofs.is_empty() {
-            warn!(
-                last_proven_block = req.last_proven_block,
-                commitments = ?self.program_config.commitments,
-                "No consecutive span proof range found for request"
-            );
-            return Ok(false);
         }
 
         // Check for gaps and duplicates between consecutive proofs

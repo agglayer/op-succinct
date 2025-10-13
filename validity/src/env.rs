@@ -1,6 +1,5 @@
 use std::{env, str::FromStr};
 
-use std::str::FromStr;
 use alloy_primitives::Address;
 use alloy_signer_local::PrivateKeySigner;
 use anyhow::{Result, Context};

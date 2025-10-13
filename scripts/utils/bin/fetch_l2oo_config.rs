@@ -173,7 +173,7 @@ async fn main() -> Result<()> {
     // Load .env file if it exists
     if let Ok(current_dir) = env::current_dir() {
         let env_path = current_dir.join(&args.env_file);
-        dotenv::from_path(env_path).ok();
+        dotenv::from_path(env_path)?;
     } else {
         eprintln!(
             "Warning: Could not determine current directory. {} file not loaded.",

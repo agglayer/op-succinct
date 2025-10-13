@@ -3,11 +3,10 @@ use anyhow::Result;
 use op_succinct_host_utils::{
     fetcher::{OPSuccinctDataFetcher, RPCMode},
     host::OPSuccinctHost,
-    OP_SUCCINCT_L2_OUTPUT_ORACLE_CONFIG_PATH,
 };
 use op_succinct_proof_utils::initialize_host;
 use op_succinct_scripts::config_common::{
-    find_project_root, get_address, get_shared_config_data, write_config_file, TWO_WEEKS_IN_SECONDS,
+    get_address, get_shared_config_data, TWO_WEEKS_IN_SECONDS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

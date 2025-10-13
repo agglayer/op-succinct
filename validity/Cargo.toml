@@ -11,10 +11,6 @@ homepage.workspace = true
 name = "validity"
 path = "bin/validity.rs"
 
-[[example]]
-name = "logger_test"
-path = "examples/logger_test.rs"
-
 [dependencies]
 
 # workspace
@@ -78,3 +74,4 @@ default = ["ethereum"]
 celestia = ["op-succinct-proof-utils/celestia"]
 eigenda = ["op-succinct-proof-utils/eigenda"]
 ethereum = ["op-succinct-proof-utils/ethereum"]
+agglayer = []

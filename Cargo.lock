@@ -8452,7 +8452,7 @@ dependencies = [
 [[package]]
 name = "op-succinct-grpc"
 version = "0.1.0"
-source = "git+https://github.com/agglayer/op-succinct-grpc?branch=main#c282906cc89269875dc2f4b331c6b4957f16ab9b"
+source = "git+https://github.com/agglayer/op-succinct-grpc?tag=v1.0.0#c282906cc89269875dc2f4b331c6b4957f16ab9b"
 dependencies = [
  "bincode",
  "bytes",

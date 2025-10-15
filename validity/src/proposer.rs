@@ -1,14 +1,21 @@
 use std::{collections::HashMap, str::FromStr, sync::Arc, time::Duration};
 
+#[cfg(not(feature = "agglayer"))]
+use {
+    alloy_primitives::Address,
+    alloy_provider::network::ReceiptResponse,
+};
+
+#[cfg(feature = "agglayer")]
+use op_succinct_grpc::proofs::proofs_server::ProofsServer;
+
 use alloy_eips::BlockId;
-use alloy_primitives::{Address, B256, U256};
-use alloy_provider::{network::ReceiptResponse, Provider};
+use alloy_primitives::{B256, U256};
+use alloy_provider::Provider;
 use anyhow::{anyhow, Context, Result};
 use futures_util::{stream, StreamExt, TryStreamExt};
 use op_succinct_client_utils::{boot::hash_rollup_config, types::u32_to_u8};
 use op_succinct_elfs::AGGREGATION_ELF;
-#[cfg(feature = "agglayer")]
-use op_succinct_grpc::proofs::proofs_server::ProofsServer;
 use op_succinct_host_utils::{
     fetcher::OPSuccinctDataFetcher,
     host::OPSuccinctHost,
@@ -928,6 +935,7 @@ where
 
     /// Relay all completed aggregation proofs to the contract.
     #[tracing::instrument(name = "proposer.submit_agg_proofs", skip(self))]
+    #[cfg(not(feature = "agglayer"))]
     async fn submit_agg_proofs(&self) -> Result<()> {
         let latest_proposed_block_number = get_latest_proposed_block_number(
             self.contract_config.l2oo_address,
@@ -982,6 +990,7 @@ where
     ///
     /// If the DGF address is set, use it to create a new validity dispute game that will resolve
     /// with the proof. Otherwise, propose the L2 output.
+    #[cfg(not(feature = "agglayer"))]
     async fn relay_aggregation_proof(
         &self,
         completed_agg_proof: &OPSuccinctRequest,

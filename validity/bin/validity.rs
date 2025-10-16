@@ -72,6 +72,7 @@ async fn main() -> Result<()> {
         mock: env_config.mock,
         safe_db_fallback: env_config.safe_db_fallback,
         op_succinct_config_name_hash,
+        #[cfg(feature = "agglayer")]
         grpc_addr: env_config.grpc_addr,
         use_kms_requester: env_config.use_kms_requester,
         max_price_per_pgu: env_config.max_price_per_pgu,

@@ -1,4 +1,5 @@
 -- Migration script to create the requests and eth_metrics tables
+
 -- Create requests table
 CREATE TABLE IF NOT EXISTS requests (
     id BIGSERIAL PRIMARY KEY,
@@ -24,8 +25,8 @@ CREATE TABLE IF NOT EXISTS requests (
     proof BYTEA,
     total_nb_transactions BIGINT NOT NULL,
     total_eth_gas_used BIGINT NOT NULL,
-    total_l1_fees NUMERIC(38, 0) NOT NULL,
-    total_tx_fees NUMERIC(38, 0) NOT NULL,
+    total_l1_fees NUMERIC(38,0) NOT NULL,
+    total_tx_fees NUMERIC(38,0) NOT NULL,
     l1_chain_id BIGINT NOT NULL,
     l2_chain_id BIGINT NOT NULL,
     contract_address BYTEA

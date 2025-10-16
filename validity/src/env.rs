@@ -32,8 +32,8 @@ pub struct EnvironmentConfig {
     pub mock: bool,
     pub safe_db_fallback: bool,
     pub op_succinct_config_name: String,
+    #[cfg(feature = "agglayer")]
     pub grpc_addr: String,
-    pub log_format: String,
     pub use_kms_requester: bool,
     pub max_price_per_pgu: u64,
     pub timeout: u64,
@@ -147,8 +147,8 @@ pub async fn read_proposer_env() -> Result<EnvironmentConfig> {
             "OP_SUCCINCT_CONFIG_NAME",
             Some("opsuccinct_genesis".to_string()),
         )?,
+        #[cfg(feature = "agglayer")]
         grpc_addr: get_env_var("GRPC_ADDRESS", Some("[::1]:50051".to_string()))?,
-        log_format: get_env_var("LOG_FORMAT", Some("pretty".to_string()))?,
         use_kms_requester: get_env_var("USE_KMS_REQUESTER", Some(false))?,
         max_price_per_pgu: get_env_var("MAX_PRICE_PER_PGU", Some(300_000_000))?, /* 0.3 PROVE per billion PGU */
         timeout: get_env_var("TIMEOUT", Some(14400))?,                           // 4 hours

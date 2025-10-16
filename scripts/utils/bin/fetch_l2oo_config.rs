@@ -3,18 +3,15 @@ use anyhow::Result;
 use op_succinct_host_utils::{
     fetcher::{OPSuccinctDataFetcher, RPCMode},
     host::OPSuccinctHost,
+    OP_SUCCINCT_L2_OUTPUT_ORACLE_CONFIG_PATH,
 };
 use op_succinct_proof_utils::initialize_host;
 use op_succinct_scripts::config_common::{
-    get_address, get_shared_config_data, TWO_WEEKS_IN_SECONDS,
+    find_project_root, get_address, get_shared_config_data, write_config_file, TWO_WEEKS_IN_SECONDS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-    sync::Arc
-};
+use std::{env, sync::Arc};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -52,7 +49,7 @@ struct L2OOConfig {
 /// - chain_id: Get the chain id from the rollup config.
 /// - vkey: Get the vkey from the aggregation program ELF.
 /// - owner: Set to the address associated with the private key.
-async fn update_l2oo_config(output_dir: &Path) -> Result<()> {
+async fn update_l2oo_config() -> Result<()> {
     let data_fetcher = OPSuccinctDataFetcher::new_with_rollup_config().await?;
     let host = initialize_host(Arc::new(data_fetcher.clone()));
     let shared_config = get_shared_config_data().await?;
@@ -136,20 +133,8 @@ async fn update_l2oo_config(output_dir: &Path) -> Result<()> {
         op_succinct_l2_output_oracle_impl,
     };
 
-    write_l2oo_config(l2oo_config, output_dir)?;
+    write_config_file(&l2oo_config, &OP_SUCCINCT_L2_OUTPUT_ORACLE_CONFIG_PATH, "L2 Output Oracle")?;
 
-    Ok(())
-}
-
-/// Write the L2OO rollup config to `contracts/opsuccinctl2ooconfig.json`.
-fn write_l2oo_config(config: L2OOConfig, output_dir: &Path) -> Result<()> {
-    let opsuccinct_config_path = output_dir.join("opsuccinctl2ooconfig.json");
-    // Create parent directories if they don't exist
-    if let Some(parent) = opsuccinct_config_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    // Write the L2OO rollup config to the opsuccinctl2ooconfig.json file
-    fs::write(&opsuccinct_config_path, serde_json::to_string_pretty(&config)?)?;
     Ok(())
 }
 
@@ -161,28 +146,21 @@ struct Args {
     /// L2 chain ID
     #[arg(long, default_value = ".env")]
     env_file: String,
-    /// Output directory for opsuccinctl2ooconfig.json
-    #[arg(long, default_value = "/opt/op-succinct/contracts")]
-    output_dir: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    // Load .env file if it exists
-    if let Ok(current_dir) = env::current_dir() {
-        let env_path = current_dir.join(&args.env_file);
-        dotenv::from_path(env_path)?;
+    // This fetches the .env file from the project root. If the command is invoked in the contracts/
+    // directory, the .env file in the root of the repo is used.
+    if let Some(root) = find_project_root() {
+        dotenv::from_path(root.join(args.env_file)).ok();
     } else {
-        eprintln!(
-            "Warning: Could not determine current directory. {} file not loaded.",
-            args.env_file
-        );
+        eprintln!("Warning: Could not find project root. {} file not loaded.", args.env_file);
     }
 
-    let output_dir = PathBuf::from(&args.output_dir);
-    update_l2oo_config(&output_dir).await?;
+    update_l2oo_config().await?;
 
     Ok(())
 }

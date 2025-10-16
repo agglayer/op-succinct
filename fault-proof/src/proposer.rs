@@ -33,10 +33,10 @@ use tokio::{sync::Mutex, time};
 use crate::{
     config::ProposerConfig,
     contract::{
-        AnchorStateRegistry::AnchorStateRegistryInstance,
         DisputeGameFactory::{DisputeGameCreated, DisputeGameFactoryInstance},
-        GameStatus, IDisputeGame, OPSuccinctFaultDisputeGame, ProposalStatus,
+        GameStatus, OPSuccinctFaultDisputeGame, ProposalStatus,
     },
+    is_parent_resolved,
     prometheus::ProposerGauge,
     FactoryTrait, L1Provider, L2Provider, L2ProviderTrait,
 };
@@ -146,7 +146,6 @@ where
     pub l1_provider: L1Provider,
     pub l2_provider: L2Provider,
     pub factory: Arc<DisputeGameFactoryInstance<P>>,
-    pub anchor_state_registry: Arc<AnchorStateRegistryInstance<P>>,
     pub init_bond: U256,
     pub safe_db_fallback: bool,
     prover: SP1Prover,
@@ -168,7 +167,6 @@ where
         config: ProposerConfig,
         signer: Signer,
         factory: DisputeGameFactoryInstance<P>,
-        anchor_state_registry: AnchorStateRegistryInstance<P>,
         fetcher: Arc<OPSuccinctDataFetcher>,
         host: Arc<H>,
     ) -> Result<Self> {
@@ -197,7 +195,6 @@ where
             l1_provider,
             l2_provider,
             factory: Arc::new(factory.clone()),
-            anchor_state_registry: Arc::new(anchor_state_registry.clone()),
             init_bond,
             safe_db_fallback: config.safe_db_fallback,
             prover: SP1Prover {
@@ -270,7 +267,8 @@ where
     ///    - Incrementally load new games from the factory starting from the cursor.
     ///    - Games are validated (correct type, valid output root) before being added.
     /// 2. Synchronize the status of all cached games.
-    ///    - Games are marked for resolution if the parent is resolved and the game is over.
+    ///    - Games are marked for resolution if the parent is resolved, the game is over, and it's
+    ///      own game.
     ///    - Games are marked for bond claim if they are finalized and there is credit to claim.
     /// 3. Evict games from the cache.
     ///    - Games that are finalized but there is no credit left to claim.
@@ -333,14 +331,13 @@ where
                 let deadline = U256::from(claim_data.deadline).to::<u64>();
                 let parent_index = claim_data.parentIndex;
                 let is_finalized =
-                    self.anchor_state_registry.isGameFinalized(game_address).call().await?;
-                let credit = contract.credit(signer_address).call().await?;
+                    self.factory.is_game_finalized(self.config.game_type, game_address).await?;
 
                 match status {
                     GameStatus::IN_PROGRESS => {
                         let game_type = contract.gameType().call().await?;
                         let parent_resolved =
-                            self.is_parent_resolved(parent_index, self.l1_provider.clone()).await?;
+                            is_parent_resolved(parent_index, self.factory.as_ref()).await?;
                         let is_game_over = match claim_data.status {
                             ProposalStatus::Unchallenged => now_ts >= deadline,
                             ProposalStatus::UnchallengedAndValidProofProvided |
@@ -372,6 +369,8 @@ where
                         });
                     }
                     GameStatus::DEFENDER_WINS => {
+                        let credit = contract.credit(signer_address).call().await?;
+
                         if is_finalized && credit == U256::ZERO {
                             actions.push(GameSyncAction::Remove(index));
                         } else {
@@ -412,7 +411,16 @@ where
                         }
                     }
                     GameSyncAction::Remove(index) => {
-                        state.games.remove(&index);
+                        let is_canonical_head = state.canonical_head_index == Some(index);
+
+                        if is_canonical_head {
+                            tracing::debug!(
+                                game_index = %index,
+                                "Retaining canonical head game in cache despite zero credit"
+                            );
+                        } else {
+                            state.games.remove(&index);
+                        }
                     }
                     GameSyncAction::RemoveSubtree(index) => {
                         state.remove_subtree(index);
@@ -426,14 +434,15 @@ where
 
     /// Synchronizes the anchor game from the factory.
     async fn sync_anchor_game(&self) -> Result<()> {
-        let anchor_address = self.anchor_state_registry.anchorGame().call().await?;
+        let anchor_game = self.factory.get_anchor_game(self.config.game_type).await?;
+        let anchor_address = anchor_game.address();
 
-        if anchor_address != Address::ZERO {
+        if *anchor_address != Address::ZERO {
             let mut state = self.state.lock().await;
 
             // Fetch the anchor game from the cache.
             if let Some((_, anchor_game)) =
-                state.games.iter().find(|(_, game)| game.address == anchor_address)
+                state.games.iter().find(|(_, game)| game.address == *anchor_address)
             {
                 state.anchor_game = Some(anchor_game.clone());
             } else {
@@ -1167,18 +1176,116 @@ where
 
     /// Check if we should create a game
     ///
-    /// Compares the next L2 block number for proposal with the finalized L2 block number.
+    /// In fast finality mode, prioritizes proving existing games over creating new ones, preventing
+    /// the proposer from abandoning in-progress games after a restart.
+    ///
+    /// Then compares the next L2 block number for proposal with the finalized L2 block number.
     /// If the finalized L2 block number is greater than or equal to the next L2 block number for
     /// proposal, we should create a game.
     async fn should_create_game(&self) -> Result<(bool, U256)> {
-        // In fast finality mode, check if we're at proving capacity
+        // In fast finality mode, resume proving for existing games before creating new ones
         // TODO(fakedev9999): Consider unifying proving concurrency control for both fast finality
         // and defense proving with a priority system.
         if self.config.fast_finality_mode {
-            let active_proving = self.count_active_proving_tasks().await;
+            let mut active_proving = self.count_active_proving_tasks().await;
+
+            // Resume proving for existing unproven games before creating new ones.
+            if active_proving < self.config.fast_finality_proving_limit {
+                let signer_address = self.signer.address();
+
+                let unproven_games = {
+                    let state = self.state.lock().await;
+                    let tasks = self.tasks.lock().await;
+
+                    let candidates = state
+                        .games
+                        .values()
+                        .filter(|game| game.status == GameStatus::IN_PROGRESS)
+                        .filter(|game| game.proposal_status == ProposalStatus::Unchallenged)
+                        .map(|game| (game.index, game.address))
+                        .collect::<Vec<_>>();
+
+                    let proving_set = tasks
+                        .values()
+                        .filter_map(|(_, info)| match info {
+                            TaskInfo::GameProving { game_address, .. } => Some(*game_address),
+                            _ => None,
+                        })
+                        .collect::<HashSet<_>>();
+
+                    // Filter games being proven
+                    candidates
+                        .into_iter()
+                        .filter(|(_, address)| !proving_set.contains(address))
+                        .collect::<Vec<_>>()
+                };
+
+                let mut spawned_count = 0;
+
+                for (index, game_address) in unproven_games {
+                    if active_proving >= self.config.fast_finality_proving_limit {
+                        tracing::debug!(
+                            "Reached fast finality proving capacity ({}/{}) while resuming games",
+                            active_proving,
+                            self.config.fast_finality_proving_limit
+                        );
+                        break;
+                    }
+
+                    // Check if we own this game
+                    let contract =
+                        OPSuccinctFaultDisputeGame::new(game_address, self.l1_provider.clone());
+                    let creator = match contract.gameCreator().call().await {
+                        Ok(c) => c,
+                        Err(e) => {
+                            tracing::warn!(
+                                ?game_address,
+                                ?e,
+                                "Failed to check game creator, skipping"
+                            );
+                            continue;
+                        }
+                    };
+
+                    if creator != signer_address {
+                        continue;
+                    }
+
+                    // Spawn proving task
+                    match self.spawn_game_proving_task(game_address, false).await {
+                        Ok(()) => {
+                            tracing::info!(
+                                game_address = ?game_address,
+                                game_index = %index,
+                                "Resumed fast finality proving for existing game"
+                            );
+                            spawned_count += 1;
+                            active_proving += 1;
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                ?game_address,
+                                ?e,
+                                "Failed to spawn proving task, continuing"
+                            );
+                        }
+                    }
+                }
+
+                if spawned_count > 0 {
+                    tracing::info!(
+                        "Resumed proving for {} existing game(s), now at {}/{} capacity",
+                        spawned_count,
+                        active_proving,
+                        self.config.fast_finality_proving_limit
+                    );
+                }
+            }
+
+            // Check capacity after resuming existing games
             if active_proving >= self.config.fast_finality_proving_limit {
                 tracing::info!(
-                    "Skipping game creation in fast finality mode: proving at capacity ({}/{})",
+                    "Skipping game creation: at proving capacity ({}/{})",
                     active_proving,
                     self.config.fast_finality_proving_limit
                 );
@@ -1369,26 +1476,5 @@ where
         self.tasks.lock().await.insert(task_id, (handle, task_info));
         tracing::info!("Spawned bond claim task {}", task_id);
         Ok(())
-    }
-
-    /// Checks if a game's parent is in a resolved state, allowing this game to be resolved.
-    ///
-    /// A game can only be resolved after its parent is no longer IN_PROGRESS.
-    /// For games with anchor as parent (parent_index = u32::MAX), the parent is always considered
-    /// resolved.
-    async fn is_parent_resolved(&self, parent_index: u32, l1_provider: L1Provider) -> Result<bool> {
-        if parent_index == u32::MAX {
-            return Ok(true);
-        }
-
-        let parent_game_address =
-            self.factory.gameAtIndex(U256::from(parent_index)).call().await?.proxy;
-        let parent_game_contract = IDisputeGame::new(parent_game_address, l1_provider);
-
-        if parent_game_contract.status().call().await? != GameStatus::IN_PROGRESS {
-            Ok(true)
-        } else {
-            Ok(false)
-        }
     }
 }

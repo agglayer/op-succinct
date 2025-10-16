@@ -1,8 +1,12 @@
 use std::{env, str::FromStr};
 
 use alloy_primitives::Address;
-use alloy_signer_local::PrivateKeySigner;
-use anyhow::{Result, Context};
+#[cfg(feature = "agglayer")]
+use {
+    alloy_signer_local::PrivateKeySigner,
+    anyhow::Context,
+};
+use anyhow::Result;
 use op_succinct_host_utils::network::parse_fulfillment_strategy;
 use op_succinct_signer_utils::Signer;
 use reqwest::Url;
@@ -20,6 +24,7 @@ pub struct EnvironmentConfig {
     pub agg_proof_mode: SP1ProofMode,
     pub l2oo_address: Address,
     pub dgf_address: Address,
+    pub evm_gas_limit: u64,
     pub range_proof_interval: u64,
     pub max_concurrent_witness_gen: u64,
     pub max_concurrent_proof_requests: u64,
@@ -84,9 +89,9 @@ const DEFAULT_LOOP_INTERVAL: u64 = 60;
 /// Read proposer environment variables and return a config.
 ///
 /// Signer address and signer URL take precedence over private key.
-pub fn read_proposer_env() -> Result<EnvironmentConfig> {
+pub async fn read_proposer_env() -> Result<EnvironmentConfig> {
     #[cfg(not(feature = "agglayer"))]
-    let signer = Signer::from_env()?;
+    let signer = Signer::from_env().await?;
 
     #[cfg(feature = "agglayer")]
     // In agglayer mode, the signer address is the prover address
@@ -130,6 +135,7 @@ pub fn read_proposer_env() -> Result<EnvironmentConfig> {
         agg_proof_mode,
         l2oo_address: get_env_var("L2OO_ADDRESS", Some(Address::ZERO))?,
         dgf_address: get_env_var("DGF_ADDRESS", Some(Address::ZERO))?,
+        evm_gas_limit: get_env_var("RANGE_PROOF_EVM_GAS_LIMIT", Some(0))?,
         range_proof_interval: get_env_var("RANGE_PROOF_INTERVAL", Some(1800))?,
         max_concurrent_witness_gen: get_env_var("MAX_CONCURRENT_WITNESS_GEN", Some(1))?,
         max_concurrent_proof_requests: get_env_var("MAX_CONCURRENT_PROOF_REQUESTS", Some(1))?,

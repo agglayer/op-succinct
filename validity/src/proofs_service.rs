@@ -13,7 +13,7 @@ use op_succinct_grpc::proofs::{
     GetMockProofResponse,
 };
 use op_succinct_host_utils::{host::OPSuccinctHost, metrics::MetricsGauge};
-use std::{sync::Arc, time::Instant};
+use std::{sync::Arc, time::Instant, clone::Clone};
 
 pub struct Service<P, H>
 where
@@ -59,7 +59,7 @@ where
 impl<P, H> Proofs for Service<P, H>
 // Update trait implementation
 where
-    P: Provider + 'static,
+    P: Provider + 'static + Clone,
     H: OPSuccinctHost,
 {
     #[tracing::instrument(name = "proofs.request_agg_proof", skip(self, request))]
@@ -110,15 +110,15 @@ where
 
         // Error in case there's no range proofs
         // Validate the aggregation proof request
-        match self.proposer.proof_requester.validate_aggregation_request(&range_proofs, &req).await {
-            Ok(true) => {
+        match self.proposer.validate_aggregation_request(&range_proofs, &range_proofs.first().unwrap()).await {
+            true => {
                 debug!(
                     "Aggregation request validated successfully: start_block={}, end_block={}",
                     range_proofs.first().unwrap().start_block,
                     range_proofs.last().unwrap().end_block
                 );
             }
-            Ok(false) => {
+            false => {
                 warn!(
                     "Aggregation request validation failed: last_proven_block={}, l1_limited_end_block={}",
                     req.last_proven_block, l1_limited_end_block
@@ -126,13 +126,6 @@ where
                 return Err(Status::new(
                     Code::InvalidArgument,
                     "Aggregation request validation failed",
-                ));
-            }
-            Err(e) => {
-                warn!("Error validating aggregation request: {:?}", e);
-                return Err(Status::new(
-                    Code::Internal,
-                    format!("Failed to validate aggregation request: {}", e),
                 ));
             }
         };

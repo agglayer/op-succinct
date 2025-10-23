@@ -1,11 +1,12 @@
 use alloy_primitives::{hex::FromHex, FixedBytes};
+use alloy_provider::Provider;
 use bincode::Options;
 use tonic::{Code, Request, Response, Status};
 use tracing::{debug, info, warn};
 
 use crate::{
-    proof_requester::OPSuccinctProofRequester, OPSuccinctRequest, ProgramConfig, RequestMode,
-    RequesterConfig, ValidityGauge, DriverConfig
+    OPSuccinctRequest, RequestMode,
+    ValidityGauge, Proposer
 };
 use op_succinct_grpc::proofs::{
     proofs_server::Proofs, AggProofRequest, AggProofResponse, GetMockProofRequest,
@@ -14,27 +15,23 @@ use op_succinct_grpc::proofs::{
 use op_succinct_host_utils::{host::OPSuccinctHost, metrics::MetricsGauge};
 use std::{sync::Arc, time::Instant};
 
-pub struct Service<H>
+pub struct Service<P, H>
 where
+    P: Provider + 'static,
     H: OPSuccinctHost,
 {
-    proof_requester: Arc<OPSuccinctProofRequester<H>>,
-    program_config: ProgramConfig,
-    requester_config: RequesterConfig,
-    driver_config: DriverConfig,
+    proposer: Arc<Proposer<P, H>>,
 }
 
-impl<H> Service<H>
+impl<P, H> Service<P, H>
 where
+    P: Provider + 'static,
     H: OPSuccinctHost,
 {
     pub fn new(
-        proof_requester: Arc<OPSuccinctProofRequester<H>>,
-        program_config: ProgramConfig,
-        requester_config: RequesterConfig,
-        driver_config: DriverConfig,
+        proposer: Arc<Proposer<P, H>>,
     ) -> Self {
-        Self { proof_requester, program_config, requester_config, driver_config }
+        Self { proposer }
     }
 
     // Limit the L1 block number to the safe head if it is greater than the requested end block
@@ -44,7 +41,7 @@ where
         l1_block_number: u64,
     ) -> Result<u64, Status> {
         let safe_head = self
-            .proof_requester
+            .proposer.proof_requester
             .fetcher
             .get_l2_safe_head_from_l1_block_number(l1_block_number - 20)
             .await
@@ -59,9 +56,10 @@ where
 }
 
 #[tonic::async_trait]
-impl<H> Proofs for Service<H>
+impl<P, H> Proofs for Service<P, H>
 // Update trait implementation
 where
+    P: Provider + 'static,
     H: OPSuccinctHost,
 {
     #[tracing::instrument(name = "proofs.request_agg_proof", skip(self, request))]
@@ -94,14 +92,14 @@ where
         // Limit according to the existing span proofs range
         // Fetch consecutive range proofs from the database.
         let range_proofs = self
-            .proof_requester
+            .proposer.proof_requester
             .db_client
             .get_consecutive_complete_range_proofs(
                 req.last_proven_block as i64,
                 l1_limited_end_block as i64,
-                &self.program_config.commitments,
-                self.requester_config.l1_chain_id,
-                self.requester_config.l2_chain_id,
+                &self.proposer.program_config.commitments,
+                self.proposer.requester_config.l1_chain_id,
+                self.proposer.requester_config.l2_chain_id,
             )
             .await.map_err(|_| {
                 Status::new(
@@ -112,7 +110,7 @@ where
 
         // Error in case there's no range proofs
         // Validate the aggregation proof request
-        match self.proof_requester.validate_aggregation_request(&range_proofs, &req).await {
+        match self.proposer.proof_requester.validate_aggregation_request(&range_proofs, &req).await {
             Ok(true) => {
                 debug!(
                     "Aggregation request validated successfully: start_block={}, end_block={}",
@@ -144,19 +142,19 @@ where
 
         // Prepare the request and query the proof requester
         let op_request = OPSuccinctRequest::new_agg_request(
-            if self.requester_config.mock { RequestMode::Mock } else { RequestMode::Real },
+            if self.proposer.requester_config.mock { RequestMode::Mock } else { RequestMode::Real },
             req.last_proven_block as i64,
             end_block,
-            self.program_config.commitments.range_vkey_commitment,
-            self.program_config.commitments.agg_vkey_hash,
-            self.program_config.commitments.rollup_config_hash,
-            self.requester_config.l1_chain_id,
-            self.requester_config.l2_chain_id,
+            self.proposer.program_config.commitments.range_vkey_commitment,
+            self.proposer.program_config.commitments.agg_vkey_hash,
+            self.proposer.program_config.commitments.rollup_config_hash,
+            self.proposer.requester_config.l1_chain_id,
+            self.proposer.requester_config.l2_chain_id,
             req.l1_block_number as i64,
             FixedBytes::<32>::from_hex(req.l1_block_hash).map_err(|e| {
                 Status::invalid_argument(format!("Invalid hex string for block hash: {}", e))
             })?,
-            self.driver_config.signer.address()
+            self.proposer.driver_config.signer.address()
         );
 
         info!(
@@ -170,7 +168,7 @@ where
 
         let witnessgen_duration = Instant::now();
         // Generate the stdin needed for the proof. If this fails, retry the request.
-        let stdin = match self.proof_requester.generate_proof_stdin(&op_request).await {
+        let stdin = match self.proposer.proof_requester.generate_proof_stdin(&op_request).await {
             Ok(stdin) => stdin,
             Err(e) => {
                 ValidityGauge::WitnessgenErrorCount.increment(1.0);
@@ -193,9 +191,9 @@ where
         );
 
         let reply: AggProofResponse;
-        if self.proof_requester.mock {
+        if self.proposer.proof_requester.mock {
             let proof =
-                self.proof_requester.generate_mock_agg_proof(&op_request, stdin).await.map_err(
+                self.proposer.proof_requester.generate_mock_agg_proof(&op_request, stdin).await.map_err(
                     |e| Status::internal(format!("Failed to generate mock proof: {}", e)),
                 )?;
 
@@ -215,7 +213,7 @@ where
             // Create an aggregation proof request to cover the range with the checkpointed L1 block
             // hash.
             let last_id =
-                self.proof_requester.db_client.insert_request(&proved_op_request).await.map_err(
+                self.proposer.proof_requester.db_client.insert_request(&proved_op_request).await.map_err(
                     |e| Status::internal(format!("Failed to save request to DB: {}", e)),
                 )?;
 
@@ -236,7 +234,7 @@ where
             }
         } else {
             let proof_id = self
-                .proof_requester
+                .proposer.proof_requester
                 .request_agg_proof(stdin)
                 .await
                 .map_err(|e| Status::internal(format!("Failed to request proof: {}", e)))?;
@@ -260,7 +258,7 @@ where
 
         // Fetch the mock proof from the database
         let mock_proof = self
-            .proof_requester
+            .proposer.proof_requester
             .db_client
             .get_agg_proof_by_id(req.proof_id)
             .await

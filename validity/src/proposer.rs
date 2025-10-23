@@ -64,9 +64,9 @@ where
 {
     pub driver_config: DriverConfig,
     contract_config: ContractConfig<P>,
-    program_config: ProgramConfig,
-    requester_config: RequesterConfig,
-    proof_requester: Arc<OPSuccinctProofRequester<H>>,
+    pub program_config: ProgramConfig,
+    pub requester_config: RequesterConfig,
+    pub proof_requester: Arc<OPSuccinctProofRequester<H>>,
     tasks: Arc<Mutex<TaskMap>>,
 }
 
@@ -1497,10 +1497,13 @@ where
     }
 
     #[tracing::instrument(name = "proposer.run", skip(self))]
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(self) -> Result<()> {
+        // Wrap self in Arc for sharing across tasks
+        let self_arc = Arc::new(self);
+
         // Handle the case where the proposer is being re-started and the proposer state needs to be
         // updated.
-        self.initialize_proposer().await?;
+        self_arc.initialize_proposer().await?;
 
         // Initialize the metrics gauges.
         ValidityGauge::init_all();
@@ -1508,16 +1511,14 @@ where
         #[cfg(feature = "agglayer")]
         { // Parse the url for the gRPC server.
             let addr =
-                self.requester_config.grpc_addr.parse().context("Failed to parse gRPC address")?;
+                self_arc.requester_config.grpc_addr.parse().context("Failed to parse gRPC address")?;
             info!("Starting Agglayer gRPC server on {}", addr);
+            let proposer = self_arc.clone();
             // Start the gRPC server
             tokio::spawn(
                 tonic::transport::Server::builder()
                     .add_service(ProofsServer::new(crate::proofs_service::Service::new(
-                        self.proof_requester.clone(),
-                        self.program_config.clone(),
-                        self.requester_config.clone(),
-                        self.driver_config.clone(),
+                        proposer,
                     )))
                     .serve(addr),
             );
@@ -1526,10 +1527,10 @@ where
         // Loop interval in seconds.
         loop {
             // Wrap the entire loop body in a match to handle errors
-            match self.run_loop_iteration().await {
+            match self_arc.run_loop_iteration().await {
                 Ok(_) => {
                     // Normal sleep between iterations
-                    tokio::time::sleep(Duration::from_secs(self.driver_config.loop_interval)).await;
+                    tokio::time::sleep(Duration::from_secs(self_arc.driver_config.loop_interval)).await;
                 }
                 Err(e) => {
                     // Log the error

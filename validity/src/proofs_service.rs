@@ -104,9 +104,17 @@ where
             .await.map_err(|_| {
                 Status::new(
                     Code::NotFound,
-                    "No range proofs found for the requested range",
+                    "Failed to fetch range proofs"
                 )
             })?;
+
+        // Precheck the fetched range proofs
+        if range_proofs.is_empty() {
+            return Err(Status::new(
+                Code::NotFound,
+                "No range proofs found for the requested range",
+            ));
+        }
 
         // Set the requested_end_block to the last block from the range proofs
         let end_block = range_proofs.last().unwrap().end_block;

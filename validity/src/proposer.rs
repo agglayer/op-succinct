@@ -47,7 +47,6 @@ use crate::{
 const NETWORK_CALL_TIMEOUT_SECS: u64 = 15;
 
 /// Configuration for the driver.
-#[derive(Clone)]
 pub struct DriverConfig {
     pub network_prover: Arc<NetworkProver>,
     pub fetcher: Arc<OPSuccinctDataFetcher>,
@@ -62,11 +61,11 @@ pub struct Proposer<P, H: OPSuccinctHost>
 where
     P: Provider + 'static,
 {
-    pub driver_config: DriverConfig,
+    pub(crate) driver_config: DriverConfig,
     contract_config: ContractConfig<P>,
-    pub program_config: ProgramConfig,
-    pub requester_config: RequesterConfig,
-    pub proof_requester: Arc<OPSuccinctProofRequester<H>>,
+    pub(crate) program_config: ProgramConfig,
+    pub(crate) requester_config: RequesterConfig,
+    pub(crate) proof_requester: Arc<OPSuccinctProofRequester<H>>,
     tasks: Arc<Mutex<TaskMap>>,
 }
 
@@ -782,7 +781,7 @@ where
     /// Note: In the future, submit up to MAX_CONCURRENT_PROOF_REQUESTS at a time. Don't do one per
     /// loop.
     #[tracing::instrument(name = "proposer.request_queued_proofs", skip(self))]
-    pub async fn request_queued_proofs(&self) -> Result<()> {
+    pub(crate) async fn request_queued_proofs(&self) -> Result<()> {
         let commitments = self.program_config.commitments.clone();
         let l1_chain_id = self.requester_config.l1_chain_id;
         let l2_chain_id = self.requester_config.l2_chain_id;
@@ -1509,16 +1508,19 @@ where
         ValidityGauge::init_all();
 
         #[cfg(feature = "agglayer")]
-        { // Parse the url for the gRPC server.
+        {
+            // only 1 reference to the proposer
+            let self_arc = self_arc.clone();
+
+            // Parse the url for the gRPC server.
             let addr =
                 self_arc.requester_config.grpc_addr.parse().context("Failed to parse gRPC address")?;
             info!("Starting Agglayer gRPC server on {}", addr);
-            let proposer = self_arc.clone();
             // Start the gRPC server
             tokio::spawn(
                 tonic::transport::Server::builder()
                     .add_service(ProofsServer::new(crate::proofs_service::Service::new(
-                        proposer,
+                        self_arc,
                     )))
                     .serve(addr),
             );

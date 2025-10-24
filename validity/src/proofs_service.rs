@@ -108,28 +108,6 @@ where
                 )
             })?;
 
-        // Error in case there's no range proofs
-        // Validate the aggregation proof request
-        match self.proposer.validate_aggregation_request(&range_proofs, &range_proofs.first().unwrap()).await {
-            true => {
-                debug!(
-                    "Aggregation request validated successfully: start_block={}, end_block={}",
-                    range_proofs.first().unwrap().start_block,
-                    range_proofs.last().unwrap().end_block
-                );
-            }
-            false => {
-                warn!(
-                    "Aggregation request validation failed: last_proven_block={}, l1_limited_end_block={}",
-                    req.last_proven_block, l1_limited_end_block
-                );
-                return Err(Status::new(
-                    Code::InvalidArgument,
-                    "Aggregation request validation failed",
-                ));
-            }
-        };
-
         // Set the requested_end_block to the last block from the range proofs
         let end_block = range_proofs.last().unwrap().end_block;
 
@@ -149,6 +127,28 @@ where
             })?,
             self.proposer.driver_config.signer.address()
         );
+
+        // Error in case there's no range proofs
+        // Validate the aggregation proof request
+        match self.proposer.validate_aggregation_request(&range_proofs, &op_request).await {
+            true => {
+                debug!(
+                    "Aggregation request validated successfully: start_block={}, end_block={}",
+                    range_proofs.first().unwrap().start_block,
+                    range_proofs.last().unwrap().end_block
+                );
+            }
+            false => {
+                warn!(
+                    "Aggregation request validation failed: last_proven_block={}, l1_limited_end_block={}",
+                    req.last_proven_block, l1_limited_end_block
+                );
+                return Err(Status::new(
+                    Code::InvalidArgument,
+                    "Aggregation request validation failed",
+                ));
+            }
+        };
 
         info!(
             request_type = ?op_request.req_type,

@@ -1498,11 +1498,11 @@ where
     #[tracing::instrument(name = "proposer.run", skip(self))]
     pub async fn run(self) -> Result<()> {
         // Wrap self in Arc for sharing across tasks
-        let self_arc = Arc::new(self);
+        let proposer = Arc::new(self);
 
         // Handle the case where the proposer is being re-started and the proposer state needs to be
         // updated.
-        self_arc.initialize_proposer().await?;
+        proposer.initialize_proposer().await?;
 
         // Initialize the metrics gauges.
         ValidityGauge::init_all();
@@ -1510,17 +1510,17 @@ where
         #[cfg(feature = "agglayer")]
         {
             // only 1 reference to the proposer
-            let self_arc = self_arc.clone();
+            let proposer = proposer.clone();
 
             // Parse the url for the gRPC server.
             let addr =
-                self_arc.requester_config.grpc_addr.parse().context("Failed to parse gRPC address")?;
+                proposer.requester_config.grpc_addr.parse().context("Failed to parse gRPC address")?;
             info!("Starting Agglayer gRPC server on {}", addr);
             // Start the gRPC server
             tokio::spawn(
                 tonic::transport::Server::builder()
                     .add_service(ProofsServer::new(crate::proofs_service::Service::new(
-                        self_arc,
+                        proposer,
                     )))
                     .serve(addr),
             );
@@ -1529,10 +1529,10 @@ where
         // Loop interval in seconds.
         loop {
             // Wrap the entire loop body in a match to handle errors
-            match self_arc.run_loop_iteration().await {
+            match proposer.run_loop_iteration().await {
                 Ok(_) => {
                     // Normal sleep between iterations
-                    tokio::time::sleep(Duration::from_secs(self_arc.driver_config.loop_interval)).await;
+                    tokio::time::sleep(Duration::from_secs(proposer.driver_config.loop_interval)).await;
                 }
                 Err(e) => {
                     // Log the error

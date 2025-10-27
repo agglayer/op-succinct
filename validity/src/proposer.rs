@@ -47,7 +47,6 @@ use crate::{
 const NETWORK_CALL_TIMEOUT_SECS: u64 = 15;
 
 /// Configuration for the driver.
-#[derive(Clone)]
 pub struct DriverConfig {
     pub network_prover: Arc<NetworkProver>,
     pub fetcher: Arc<OPSuccinctDataFetcher>,
@@ -62,11 +61,11 @@ pub struct Proposer<P, H: OPSuccinctHost>
 where
     P: Provider + 'static,
 {
-    pub driver_config: DriverConfig,
+    pub(crate) driver_config: DriverConfig,
     contract_config: ContractConfig<P>,
-    program_config: ProgramConfig,
-    requester_config: RequesterConfig,
-    proof_requester: Arc<OPSuccinctProofRequester<H>>,
+    pub(crate) program_config: ProgramConfig,
+    pub(crate) requester_config: RequesterConfig,
+    pub(crate) proof_requester: Arc<OPSuccinctProofRequester<H>>,
     tasks: Arc<Mutex<TaskMap>>,
 }
 
@@ -782,7 +781,7 @@ where
     /// Note: In the future, submit up to MAX_CONCURRENT_PROOF_REQUESTS at a time. Don't do one per
     /// loop.
     #[tracing::instrument(name = "proposer.request_queued_proofs", skip(self))]
-    pub async fn request_queued_proofs(&self) -> Result<()> {
+    pub(crate) async fn request_queued_proofs(&self) -> Result<()> {
         let commitments = self.program_config.commitments.clone();
         let l1_chain_id = self.requester_config.l1_chain_id;
         let l2_chain_id = self.requester_config.l2_chain_id;
@@ -1497,27 +1496,31 @@ where
     }
 
     #[tracing::instrument(name = "proposer.run", skip(self))]
-    pub async fn run(&self) -> Result<()> {
+    pub async fn run(self) -> Result<()> {
+        // Wrap self in Arc for sharing across tasks
+        let proposer = Arc::new(self);
+
         // Handle the case where the proposer is being re-started and the proposer state needs to be
         // updated.
-        self.initialize_proposer().await?;
+        proposer.initialize_proposer().await?;
 
         // Initialize the metrics gauges.
         ValidityGauge::init_all();
 
         #[cfg(feature = "agglayer")]
-        { // Parse the url for the gRPC server.
+        {
+            // only 1 reference to the proposer
+            let proposer = proposer.clone();
+
+            // Parse the url for the gRPC server.
             let addr =
-                self.requester_config.grpc_addr.parse().context("Failed to parse gRPC address")?;
+                proposer.requester_config.grpc_addr.parse().context("Failed to parse gRPC address")?;
             info!("Starting Agglayer gRPC server on {}", addr);
             // Start the gRPC server
             tokio::spawn(
                 tonic::transport::Server::builder()
                     .add_service(ProofsServer::new(crate::proofs_service::Service::new(
-                        self.proof_requester.clone(),
-                        self.program_config.clone(),
-                        self.requester_config.clone(),
-                        self.driver_config.clone(),
+                        proposer,
                     )))
                     .serve(addr),
             );
@@ -1526,10 +1529,10 @@ where
         // Loop interval in seconds.
         loop {
             // Wrap the entire loop body in a match to handle errors
-            match self.run_loop_iteration().await {
+            match proposer.run_loop_iteration().await {
                 Ok(_) => {
                     // Normal sleep between iterations
-                    tokio::time::sleep(Duration::from_secs(self.driver_config.loop_interval)).await;
+                    tokio::time::sleep(Duration::from_secs(proposer.driver_config.loop_interval)).await;
                 }
                 Err(e) => {
                     // Log the error

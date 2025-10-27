@@ -136,7 +136,6 @@ where
             self.proposer.driver_config.signer.address()
         );
 
-        // Error in case there's no range proofs
         // Validate the aggregation proof request
         match self.proposer.validate_aggregation_request(&range_proofs, &op_request).await {
             true => {

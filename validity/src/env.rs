@@ -8,7 +8,7 @@ use {
 };
 use anyhow::Result;
 use op_succinct_host_utils::network::parse_fulfillment_strategy;
-use op_succinct_signer_utils::Signer;
+use op_succinct_signer_utils::SignerLock;
 use reqwest::Url;
 use sp1_sdk::{network::FulfillmentStrategy, SP1ProofMode};
 
@@ -17,7 +17,7 @@ pub struct EnvironmentConfig {
     pub db_url: String,
     pub metrics_port: u16,
     pub l1_rpc: Url,
-    pub signer: Signer,
+    pub signer: SignerLock,
     pub loop_interval: u64,
     pub range_proof_strategy: FulfillmentStrategy,
     pub agg_proof_strategy: FulfillmentStrategy,
@@ -91,8 +91,7 @@ const DEFAULT_LOOP_INTERVAL: u64 = 60;
 ///
 /// Signer address and signer URL take precedence over private key.
 pub async fn read_proposer_env() -> Result<EnvironmentConfig> {
-    #[cfg(not(feature = "agglayer"))]
-    let signer = Signer::from_env().await?;
+    let signer = SignerLock::from_env().await?;
 
     #[cfg(feature = "agglayer")]
     // In agglayer mode, the signer address is the prover address

@@ -5,6 +5,7 @@ use alloy_primitives::Address;
 use {
     alloy_signer_local::PrivateKeySigner,
     anyhow::Context,
+    op_succinct_signer_utils::Signer,
 };
 use anyhow::Result;
 use op_succinct_host_utils::network::parse_fulfillment_strategy;
@@ -98,9 +99,9 @@ pub async fn read_proposer_env() -> Result<EnvironmentConfig> {
     let signer = if let Ok(prover_address_str) = std::env::var("PROVER_ADDRESS") {
         let prover_address =
             Address::from_str(&prover_address_str).context("Failed to parse PROVER_ADDRESS")?;
-        Signer::new_web3_signer(Url::parse("http://localhost").unwrap(), prover_address)
+        SignerLock::new(Signer::new_web3_signer(Url::parse("http://localhost").unwrap(), prover_address))
     } else {
-        Signer::LocalSigner(PrivateKeySigner::random())
+        SignerLock::new(Signer::LocalSigner(PrivateKeySigner::random()))
     };
 
     // Parse strategy values

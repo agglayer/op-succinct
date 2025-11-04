@@ -116,11 +116,11 @@ pub async fn read_proposer_env() -> Result<EnvironmentConfig> {
 
     // Parse proof mode
     let agg_proof_mode =
-        match get_env_var("AGG_PROOF_MODE", Some("groth16".to_string()))?.to_lowercase().as_str() {
+        match get_env_var("AGG_PROOF_MODE", Some("plonk".to_string()))?.to_lowercase().as_str() {
             "plonk" => SP1ProofMode::Plonk,
             "groth16" => SP1ProofMode::Groth16,
             "compressed" => SP1ProofMode::Compressed,
-            _ => SP1ProofMode::Groth16, // Default to Groth16 if no match
+            _ => SP1ProofMode::Plonk, // Default to Plonk if no match
         };
 
     // Optional loop interval

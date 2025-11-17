@@ -67,8 +67,9 @@ impl OPSuccinctHost for SingleChainOPSuccinctHost {
 
         // FIXME(fakedev9999): Investigate requirement for L1 head offset beyond batch posting block
         // with safe head > L2 end block.
-        // Add a small buffer for Ethereum DA.
-        let l1_head_number = l1_head_number + 20;
+        // Add a buffer for Ethereum DA. Increased from 20 to 100 to ensure sufficient L1 context
+        // for proper L2 block derivation and validation.
+        let l1_head_number = l1_head_number + 100;
 
         // Ensure we don't exceed the finalized L1 header.
         let finalized_l1_header = fetcher.get_l1_header(BlockId::finalized()).await?;

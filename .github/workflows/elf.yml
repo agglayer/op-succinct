@@ -25,7 +25,7 @@ jobs:
   elf:
     runs-on:
       - runs-on
-      - runner=64cpu-linux-x64
+      - runner=ubuntu-latest
       - run-id=${{ github.run_id }}
       - spot=false
 

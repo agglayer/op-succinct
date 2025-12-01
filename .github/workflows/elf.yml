@@ -23,9 +23,7 @@ concurrency:
 
 jobs:
   elf:
-    runs-on:
-      - ubuntu-latest
-      - run-id=${{ github.run_id }}
+    runs-on: ubuntu-latest-8-core
 
     steps:
       - name: Checkout code

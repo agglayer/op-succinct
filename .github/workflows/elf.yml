@@ -7,8 +7,8 @@ on:
     branches:
       - main
     paths-ignore:
-      - '**/*.pdf'
-      - '**/*.md'
+      - "**/*.pdf"
+      - "**/*.md"
   push:
     tags:
       - v[0-9]+.*
@@ -24,10 +24,8 @@ concurrency:
 jobs:
   elf:
     runs-on:
-      - runs-on
-      - runner=ubuntu-latest
+      - ubuntu-latest
       - run-id=${{ github.run_id }}
-      - spot=false
 
     steps:
       - name: Checkout code

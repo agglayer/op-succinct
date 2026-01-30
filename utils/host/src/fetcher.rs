@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
     str::FromStr,
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use alloy_consensus::{BlockHeader, Header};
@@ -361,11 +361,23 @@ impl OPSuccinctDataFetcher {
         Ok(l1_config_path)
     }
 
+    /// Returns the RPC timeout duration from the `RPC_TIMEOUT` environment variable.
+    /// Defaults to 300 seconds (5 minutes) if not set.
+    fn get_rpc_timeout() -> Duration {
+        let timeout_secs: u64 = env::var("RPC_TIMEOUT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(300);
+        Duration::from_secs(timeout_secs)
+    }
+
     async fn fetch_rpc_data<T>(url: &Url, method: &str, params: Vec<Value>) -> Result<T>
     where
         T: serde::de::DeserializeOwned,
     {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            .timeout(Self::get_rpc_timeout())
+            .build()?;
         let response = client
             .post(url.clone())
             .json(&json!({

@@ -223,6 +223,42 @@ sha3 = { git = "https://github.com/sp1-patches/RustCrypto-hashes", package = "sh
 p256 = { git = "https://github.com/sp1-patches/elliptic-curves", tag = "patch-p256-13.2-sp1-5.0.0" }
 k256 = { git = "https://github.com/sp1-patches/elliptic-curves", tag = "patch-k256-13.4-sp1-5.0.0" }
 
-# Patch kona-host to add KONA_PREIMAGE_TIMEOUT env var (default: 10s)
+# Patch all kona crates to use fork with KONA_PREIMAGE_TIMEOUT support
 [patch."https://github.com/op-rs/kona"]
-kona-host = { git = "https://github.com/tnobayashi/kona", branch = "preimage-timeout" }
+kona-client = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-cli = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-comp = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-derive = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-disc = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-driver = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-engine = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-executor = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-genesis = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-gossip = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-hardforks = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-host = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-interop = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-macros = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-mpt = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-node = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-node-service = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-peers = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-preimage = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-proof = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-proof-interop = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-protocol = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-providers-alloy = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-providers-local = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-registry = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-rpc = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-serde = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-sources = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-std-fpvm = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-std-fpvm-proc = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-supervisor = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-supervisor-core = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-supervisor-metrics = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-supervisor-rpc = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-supervisor-service = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-supervisor-storage = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }
+kona-supervisor-types = { git = "https://github.com/tnobayashi/kona", tag = "kona-node/v1.2.2" }

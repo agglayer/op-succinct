@@ -3,8 +3,9 @@ name: Cost Estimator (1000 blocks)
 on:
   workflow_dispatch:
     inputs: {}
-  schedule:
-    - cron: '0 0 * * *' # Run the workflow every day at midnight UTC.
+  # schedule disabled
+  # schedule:
+  #   - cron: '0 0 * * *' # Run the workflow every day at midnight UTC.
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

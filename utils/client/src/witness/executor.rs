@@ -76,13 +76,17 @@ where
     ////////////////////////////////////////////////////////////////
 
     // Create a new derivation driver with the given boot information and oracle.
+    // The advisory fork (GHSA-qjmw-q2xw-v4xq) adds agreed_l2_output_root as 3rd param
+    // to fix TipCursor being initialized with B256::ZERO instead of the actual output root.
     let cursor = new_oracle_pipeline_cursor(
         rollup_config.as_ref(),
         safe_head,
+        boot.agreed_l2_output_root,
         &mut l1_provider,
         &mut l2_provider,
     )
     .await?;
+
     l2_provider.set_cursor(cursor.clone());
 
     Ok((boot_clone, Some((cursor, l1_provider, l2_provider))))

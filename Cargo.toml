@@ -206,7 +206,7 @@ sp1-prover = { version = "=5.2.4" }
 sp1-core-executor = { version = "=5.2.4" }
 
 # kzg
-kzg-rs = { version = "0.2.6", features = ["rkyv", "serde"] }
+kzg-rs = { version = "=0.2.7", features = ["rkyv", "serde"] }
 c-kzg = { version = "2.0.0", default-features = false }
 
 # Cloud dependencies
@@ -313,3 +313,9 @@ hana-blobstream = { git = "https://github.com/succinctlabs/hana", branch = "kona
 hana-celestia = { git = "https://github.com/succinctlabs/hana", branch = "kona-security-fix" }
 hana-oracle = { git = "https://github.com/succinctlabs/hana", branch = "kona-security-fix" }
 hana-proofs = { git = "https://github.com/succinctlabs/hana", branch = "kona-security-fix" }
+
+# Patch succinctlabs/kzg-rs git dep (from rsp/hokulea chain) to crates.io 0.2.7
+# kzg-rs 0.2.8 (git) uses sp1_bls12_381 sp1-6.0.0 which is rv64-only
+# kzg-rs 0.2.7 (crates.io) uses sp1_bls12_381 sp1-5.0.0 which is rv32-compatible
+[patch."https://github.com/succinctlabs/kzg-rs"]
+kzg-rs = { version = "=0.2.7" }

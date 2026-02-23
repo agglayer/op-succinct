@@ -22,9 +22,13 @@ RUN curl -L https://sp1.succinct.xyz | bash && \
 COPY . .
 
 # Build the server
+# SSH setup: rewrite HTTPS→SSH for private advisory fork + enable git CLI for Cargo
 RUN --mount=type=ssh \
     --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/build/target \
+    mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts && \
+    git config --global url."git@github.com:".insteadOf "https://github.com/" && \
+    mkdir -p ~/.cargo && printf '[net]\ngit-fetch-with-cli = true\n' >> ~/.cargo/config.toml && \
     cargo build --bin validity --release --features eigenda && \
     cp target/release/validity /build/validity-proposer
 

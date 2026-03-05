@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 pub const AGGREGATION_OUTPUTS_SIZE: usize = 6 * 32;
 
 /// Hash the serialized rollup config using SHA256. Note: The rollup config is never unrolled
-/// on-chain, so switching to a different hash function is not a concern, as long as the config hash
+/// on-chain, so switching to a different hash function is not a concern, as long as the config hash–
 /// is consistent with the one on the contract.
 pub fn hash_rollup_config(config: &RollupConfig) -> B256 {
     let serialized_config = serde_json::to_string_pretty(config).unwrap();
@@ -25,7 +25,7 @@ pub fn hash_rollup_config(config: &RollupConfig) -> B256 {
 
     // Finalize and convert to B256
     let hash = hasher.finalize();
-    B256::from_slice(&hash)
+    B256::from_slice(&hash[..])
 }
 
 sol! {

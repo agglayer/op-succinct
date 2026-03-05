@@ -32,7 +32,12 @@ FROM rust-base AS builder
 COPY . .
 
 # Build the proposer binary
-RUN cargo build --release --bin proposer --features eigenda
+# SSH setup: rewrite HTTPS→SSH for private advisory fork + enable git CLI for Cargo
+RUN --mount=type=ssh \
+    mkdir -p ~/.ssh && ssh-keyscan github.com >> ~/.ssh/known_hosts && \
+    git config --global url."git@github.com:".insteadOf "https://github.com/" && \
+    mkdir -p ~/.cargo && printf '[net]\ngit-fetch-with-cli = true\n' >> ~/.cargo/config.toml && \
+    cargo build --release --bin proposer --features eigenda
 
 # Download SRS from an existing release
 FROM ghcr.io/layr-labs/eigenda-proxy:2.2.1 AS srs-source

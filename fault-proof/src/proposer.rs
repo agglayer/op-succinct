@@ -26,9 +26,11 @@ use op_succinct_host_utils::{
     network::{determine_network_mode, get_network_signer},
     witness_generation::WitnessGenerator,
 };
-use op_succinct_proof_utils::get_range_elf_embedded;
+use op_succinct_proof_utils::{cluster_setup_keys, get_range_elf_embedded, is_cluster_mode};
 use op_succinct_signer_utils::SignerLock;
-use sp1_sdk::{HashableKey, Prover, ProverClient, SP1ProofWithPublicValues, SP1Stdin};
+use sp1_sdk::{
+    Elf, HashableKey, Prover, ProverClient, ProvingKey, SP1ProofWithPublicValues, SP1Stdin,
+};
 use tokio::{
     sync::{Mutex, RwLock, Semaphore},
     time,
@@ -44,7 +46,9 @@ use crate::{
     },
     is_parent_resolved,
     prometheus::ProposerGauge,
-    prover::{MockProofProvider, NetworkProofProvider, ProofKeys, ProofProvider},
+    prover::{
+        ClusterProofProvider, MockProofProvider, NetworkProofProvider, ProofKeys, ProofProvider,
+    },
     FactoryTrait, L1Provider, L2Provider, L2ProviderTrait, TxErrorExt, TX_REVERTED_PREFIX,
 };
 
@@ -283,29 +287,38 @@ where
         fetcher: Arc<OPSuccinctDataFetcher>,
         host: Arc<H>,
     ) -> Result<Self> {
-        // Set up the network prover.
-        let network_signer = get_network_signer(config.use_kms_requester).await?;
-        let network_mode = determine_network_mode(
-            config.proof_provider.range_proof_strategy,
-            config.proof_provider.agg_proof_strategy,
-        )?;
-        let network_prover = Arc::new(
-            ProverClient::builder().network_for(network_mode).signer(network_signer).build(),
-        );
-        let (range_pk, range_vk) = network_prover.setup(get_range_elf_embedded());
-        let (agg_pk, agg_vk) = network_prover.setup(AGGREGATION_ELF);
+        let is_cluster = is_cluster_mode();
 
-        // Compute vkey hashes for on-chain compatibility checks.
-        // These are compared against game contract immutable values to ensure proof compatibility.
+        anyhow::ensure!(
+            !(is_cluster && config.mock_mode),
+            "mock and cluster modes are mutually exclusive — set only one of SP1_PROVER=cluster or mock_mode=true"
+        );
+
+        let (range_pk, range_vk, agg_pk, agg_vk, network_prover, network_mode) = if is_cluster {
+            let (range_pk, range_vk, agg_pk, agg_vk) = cluster_setup_keys().await?;
+            (range_pk, range_vk, agg_pk, agg_vk, None, None)
+        } else {
+            let network_signer = get_network_signer(config.use_kms_requester).await?;
+            let nm = determine_network_mode(
+                config.proof_provider.range_proof_strategy,
+                config.proof_provider.agg_proof_strategy,
+            )?;
+            let np = Arc::new(
+                ProverClient::builder().network_for(nm).signer(network_signer).build().await,
+            );
+            let range_pk = np.setup(Elf::Static(get_range_elf_embedded())).await?;
+            let range_vk = range_pk.verifying_key().clone();
+            let agg_pk = np.setup(Elf::Static(AGGREGATION_ELF)).await?;
+            let agg_vk = agg_pk.verifying_key().clone();
+            (range_pk, range_vk, agg_pk, agg_vk, Some(np), Some(nm))
+        };
+
         let aggregation_vkey = B256::from(agg_vk.bytes32_raw());
         let range_vkey_commitment = B256::from(range_vk.hash_bytes());
-
-        // Compute rollup config hash from the fetcher's chain config.
         let rollup_config_hash = hash_rollup_config(
             fetcher.rollup_config.as_ref().context("rollup_config required for identity")?,
         );
 
-        // Create proposer identity for monitoring and version tracking.
         let identity =
             ProposerIdentity::new(aggregation_vkey, range_vkey_commitment, rollup_config_hash);
         identity.log_startup_info();
@@ -314,21 +327,30 @@ where
             range_pk: Arc::new(range_pk),
             range_vk: Arc::new(range_vk),
             agg_pk: Arc::new(agg_pk),
+            agg_vk: Arc::new(agg_vk),
         };
 
-        let prover = if config.mock_mode {
+        let prover = if is_cluster {
+            ProofProvider::Cluster(ClusterProofProvider::new(
+                keys.clone(),
+                config.proof_provider.clone(),
+            ))
+        } else if config.mock_mode {
             ProofProvider::Mock(MockProofProvider::new(
-                network_prover,
-                keys,
+                network_prover
+                    .ok_or_else(|| anyhow::anyhow!("network_prover must be set in mock mode"))?,
+                keys.clone(),
                 config.proof_provider.clone(),
                 AGGREGATION_ELF,
             ))
         } else {
             ProofProvider::Network(NetworkProofProvider::new(
-                network_prover,
-                keys,
+                network_prover
+                    .ok_or_else(|| anyhow::anyhow!("network_prover must be set in network mode"))?,
+                keys.clone(),
                 config.proof_provider.clone(),
-                network_mode,
+                network_mode
+                    .ok_or_else(|| anyhow::anyhow!("network_mode must be set in network mode"))?,
             ))
         };
 
@@ -1038,7 +1060,7 @@ where
                 tracing::info!("Generating Range Proof for blocks {start} to {end}");
                 let sp1_stdin = this.range_proof_stdin(start, end, l1_head_hash.into()).await?;
                 let (range_proof, inst_cycles, sp1_gas) =
-                    this.prover.generate_range_proof(&sp1_stdin).await?;
+                    this.prover.generate_range_proof(sp1_stdin).await?;
                 Ok::<_, anyhow::Error>((idx, range_proof, inst_cycles, sp1_gas))
             }
         });
@@ -1110,7 +1132,7 @@ where
             }
         };
 
-        let agg_proof = self.prover.generate_agg_proof(&sp1_stdin).await?;
+        let agg_proof = self.prover.generate_agg_proof(sp1_stdin).await?;
 
         let transaction_request = game.prove(agg_proof.bytes().into()).into_transaction_request();
         let receipt = self
@@ -1840,7 +1862,7 @@ where
 
                     // Spawn proving task
                     match self.spawn_game_proving_task(game_address, false, Some(deadline)).await {
-                        Ok(()) => {
+                        Ok(true) => {
                             tracing::info!(
                                 game_address = ?game_address,
                                 game_index = %index,
@@ -1849,6 +1871,7 @@ where
                             spawned_count += 1;
                             active_proving += 1;
                         }
+                        Ok(false) => {}
                         Err(e) => {
                             tracing::warn!(
                                 ?game_address,
@@ -1992,14 +2015,15 @@ where
                 continue;
             }
 
-            tracing::info!(
-                game_address = ?game_address,
-                game_index = %index,
-                "Spawning defense for challenged game"
-            );
-            self.spawn_game_proving_task(game_address, true, Some(deadline)).await?;
-            active_defense_tasks_count += 1;
-            tasks_spawned = true;
+            if self.spawn_game_proving_task(game_address, true, Some(deadline)).await? {
+                tracing::info!(
+                    game_address = ?game_address,
+                    game_index = %index,
+                    "Spawned defense for challenged game"
+                );
+                active_defense_tasks_count += 1;
+                tasks_spawned = true;
+            }
         }
 
         Ok(tasks_spawned)
@@ -2014,15 +2038,16 @@ where
     }
 
     /// Spawn a game proving task. Skips if deadline passed or vkeys don't match.
+    /// Returns `Ok(true)` if spawned, `Ok(false)` if skipped.
     async fn spawn_game_proving_task(
         &self,
         game_address: Address,
         is_defense: bool,
         deadline: Option<u64>,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         // Skip if game is not owned or deadline has passed
         if self.should_skip_proving(game_address, deadline, is_defense).await? {
-            return Ok(());
+            return Ok(false);
         }
 
         let proposer: OPSuccinctProposer<P, H> = self.clone();
@@ -2097,7 +2122,7 @@ where
 
         let task_info = TaskInfo::GameProving { game_address, is_defense };
         self.tasks.lock().await.insert(task_id, (handle, task_info));
-        Ok(())
+        Ok(true)
     }
 
     /// Check if proving should be skipped for any reason.

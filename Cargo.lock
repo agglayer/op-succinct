@@ -30,7 +30,7 @@ checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
 name = "aggregation"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "alloy-consensus",
  "alloy-primitives",
@@ -468,15 +468,15 @@ dependencies = [
 [[package]]
 name = "alloy-op-evm"
 version = "0.26.3"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
  "alloy-evm 0.27.2",
- "alloy-op-hardforks 0.4.7 (git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix)",
+ "alloy-op-hardforks 0.4.7 (git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578)",
  "alloy-primitives",
  "auto_impl",
- "op-alloy 0.23.1 (git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix)",
+ "op-alloy 0.23.1 (git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578)",
  "op-revm 15.0.0",
  "revm 34.0.0",
  "thiserror 2.0.18",
@@ -515,7 +515,7 @@ dependencies = [
 [[package]]
 name = "alloy-op-hardforks"
 version = "0.4.7"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-chains",
  "alloy-hardforks 0.4.7",
@@ -2600,7 +2600,7 @@ dependencies = [
 [[package]]
 name = "canoe-bindings"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hokulea?branch=kona-security-fix#84c36126e68f3268783909398ee352cac6b1dca9"
+source = "git+https://github.com/succinctlabs/hokulea-private?rev=8a383de106f63fc524e1f1f56ce545639679fbe6#8a383de106f63fc524e1f1f56ce545639679fbe6"
 dependencies = [
  "alloy-sol-types",
  "serde",
@@ -2609,7 +2609,7 @@ dependencies = [
 [[package]]
 name = "canoe-provider"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hokulea?branch=kona-security-fix#84c36126e68f3268783909398ee352cac6b1dca9"
+source = "git+https://github.com/succinctlabs/hokulea-private?rev=8a383de106f63fc524e1f1f56ce545639679fbe6#8a383de106f63fc524e1f1f56ce545639679fbe6"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -2623,7 +2623,7 @@ dependencies = [
 [[package]]
 name = "canoe-sp1-cc-host"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hokulea?branch=kona-security-fix#84c36126e68f3268783909398ee352cac6b1dca9"
+source = "git+https://github.com/succinctlabs/hokulea-private?rev=8a383de106f63fc524e1f1f56ce545639679fbe6#8a383de106f63fc524e1f1f56ce545639679fbe6"
 dependencies = [
  "alloy-primitives",
  "alloy-rpc-client",
@@ -2646,7 +2646,7 @@ dependencies = [
 [[package]]
 name = "canoe-sp1-cc-verifier"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hokulea?branch=kona-security-fix#84c36126e68f3268783909398ee352cac6b1dca9"
+source = "git+https://github.com/succinctlabs/hokulea-private?rev=8a383de106f63fc524e1f1f56ce545639679fbe6#8a383de106f63fc524e1f1f56ce545639679fbe6"
 dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
@@ -2665,7 +2665,7 @@ dependencies = [
 [[package]]
 name = "canoe-verifier"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hokulea?branch=kona-security-fix#84c36126e68f3268783909398ee352cac6b1dca9"
+source = "git+https://github.com/succinctlabs/hokulea-private?rev=8a383de106f63fc524e1f1f56ce545639679fbe6#8a383de106f63fc524e1f1f56ce545639679fbe6"
 dependencies = [
  "alloy-genesis",
  "alloy-primitives",
@@ -2681,7 +2681,7 @@ dependencies = [
 [[package]]
 name = "canoe-verifier-address-fetcher"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hokulea?branch=kona-security-fix#84c36126e68f3268783909398ee352cac6b1dca9"
+source = "git+https://github.com/succinctlabs/hokulea-private?rev=8a383de106f63fc524e1f1f56ce545639679fbe6#8a383de106f63fc524e1f1f56ce545639679fbe6"
 dependencies = [
  "alloy-primitives",
  "eigenda-cert",
@@ -3694,7 +3694,7 @@ dependencies = [
 [[package]]
 name = "eigenda-cert"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hokulea?branch=kona-security-fix#84c36126e68f3268783909398ee352cac6b1dca9"
+source = "git+https://github.com/succinctlabs/hokulea-private?rev=8a383de106f63fc524e1f1f56ce545639679fbe6#8a383de106f63fc524e1f1f56ce545639679fbe6"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
@@ -4507,7 +4507,7 @@ dependencies = [
 [[package]]
 name = "hana-blobstream"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hana?branch=kona-security-fix#ba231e73e85dbd0f160fae4add26d8537688bc85"
+source = "git+https://github.com/succinctlabs/hana-private?rev=501e9c888d096668a7188244189dcf63aa41d1c3#501e9c888d096668a7188244189dcf63aa41d1c3"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
@@ -4525,7 +4525,7 @@ dependencies = [
 [[package]]
 name = "hana-celestia"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hana?branch=kona-security-fix#ba231e73e85dbd0f160fae4add26d8537688bc85"
+source = "git+https://github.com/succinctlabs/hana-private?rev=501e9c888d096668a7188244189dcf63aa41d1c3#501e9c888d096668a7188244189dcf63aa41d1c3"
 dependencies = [
  "alloy-primitives",
  "async-trait",
@@ -4538,7 +4538,7 @@ dependencies = [
 [[package]]
 name = "hana-client"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hana?branch=kona-security-fix#ba231e73e85dbd0f160fae4add26d8537688bc85"
+source = "git+https://github.com/succinctlabs/hana-private?rev=501e9c888d096668a7188244189dcf63aa41d1c3#501e9c888d096668a7188244189dcf63aa41d1c3"
 dependencies = [
  "alloy-consensus",
  "alloy-evm 0.27.2",
@@ -4565,7 +4565,7 @@ dependencies = [
 [[package]]
 name = "hana-host"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hana?branch=kona-security-fix#ba231e73e85dbd0f160fae4add26d8537688bc85"
+source = "git+https://github.com/succinctlabs/hana-private?rev=501e9c888d096668a7188244189dcf63aa41d1c3#501e9c888d096668a7188244189dcf63aa41d1c3"
 dependencies = [
  "alloy-primitives",
  "alloy-provider",
@@ -4595,7 +4595,7 @@ dependencies = [
 [[package]]
 name = "hana-oracle"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hana?branch=kona-security-fix#ba231e73e85dbd0f160fae4add26d8537688bc85"
+source = "git+https://github.com/succinctlabs/hana-private?rev=501e9c888d096668a7188244189dcf63aa41d1c3#501e9c888d096668a7188244189dcf63aa41d1c3"
 dependencies = [
  "alloy-primitives",
  "async-trait",
@@ -4612,7 +4612,7 @@ dependencies = [
 [[package]]
 name = "hana-proofs"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hana?branch=kona-security-fix#ba231e73e85dbd0f160fae4add26d8537688bc85"
+source = "git+https://github.com/succinctlabs/hana-private?rev=501e9c888d096668a7188244189dcf63aa41d1c3#501e9c888d096668a7188244189dcf63aa41d1c3"
 dependencies = [
  "alloy-primitives",
  "alloy-provider",
@@ -4729,7 +4729,7 @@ dependencies = [
 [[package]]
 name = "hokulea-client"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hokulea?branch=kona-security-fix#84c36126e68f3268783909398ee352cac6b1dca9"
+source = "git+https://github.com/succinctlabs/hokulea-private?rev=8a383de106f63fc524e1f1f56ce545639679fbe6#8a383de106f63fc524e1f1f56ce545639679fbe6"
 dependencies = [
  "alloy-consensus",
  "alloy-evm 0.27.2",
@@ -4750,7 +4750,7 @@ dependencies = [
 [[package]]
 name = "hokulea-client-bin"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hokulea?branch=kona-security-fix#84c36126e68f3268783909398ee352cac6b1dca9"
+source = "git+https://github.com/succinctlabs/hokulea-private?rev=8a383de106f63fc524e1f1f56ce545639679fbe6#8a383de106f63fc524e1f1f56ce545639679fbe6"
 dependencies = [
  "alloy-evm 0.27.2",
  "alloy-op-evm 0.26.3",
@@ -4770,7 +4770,7 @@ dependencies = [
 [[package]]
 name = "hokulea-compute-proof"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hokulea?branch=kona-security-fix#84c36126e68f3268783909398ee352cac6b1dca9"
+source = "git+https://github.com/succinctlabs/hokulea-private?rev=8a383de106f63fc524e1f1f56ce545639679fbe6#8a383de106f63fc524e1f1f56ce545639679fbe6"
 dependencies = [
  "alloy-primitives",
  "ark-bn254",
@@ -4785,7 +4785,7 @@ dependencies = [
 [[package]]
 name = "hokulea-eigenda"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hokulea?branch=kona-security-fix#84c36126e68f3268783909398ee352cac6b1dca9"
+source = "git+https://github.com/succinctlabs/hokulea-private?rev=8a383de106f63fc524e1f1f56ce545639679fbe6#8a383de106f63fc524e1f1f56ce545639679fbe6"
 dependencies = [
  "alloy-primitives",
  "async-trait",
@@ -4801,7 +4801,7 @@ dependencies = [
 [[package]]
 name = "hokulea-host-bin"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hokulea?branch=kona-security-fix#84c36126e68f3268783909398ee352cac6b1dca9"
+source = "git+https://github.com/succinctlabs/hokulea-private?rev=8a383de106f63fc524e1f1f56ce545639679fbe6#8a383de106f63fc524e1f1f56ce545639679fbe6"
 dependencies = [
  "alloy-primitives",
  "anyhow",
@@ -4828,7 +4828,7 @@ dependencies = [
 [[package]]
 name = "hokulea-proof"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hokulea?branch=kona-security-fix#84c36126e68f3268783909398ee352cac6b1dca9"
+source = "git+https://github.com/succinctlabs/hokulea-private?rev=8a383de106f63fc524e1f1f56ce545639679fbe6#8a383de106f63fc524e1f1f56ce545639679fbe6"
 dependencies = [
  "alloy-primitives",
  "ark-bn254",
@@ -4850,7 +4850,7 @@ dependencies = [
 [[package]]
 name = "hokulea-witgen"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hokulea?branch=kona-security-fix#84c36126e68f3268783909398ee352cac6b1dca9"
+source = "git+https://github.com/succinctlabs/hokulea-private?rev=8a383de106f63fc524e1f1f56ce545639679fbe6#8a383de106f63fc524e1f1f56ce545639679fbe6"
 dependencies = [
  "alloy-consensus",
  "alloy-primitives",
@@ -4870,7 +4870,7 @@ dependencies = [
 [[package]]
 name = "hokulea-zkvm-verification"
 version = "0.1.0"
-source = "git+https://github.com/succinctlabs/hokulea?branch=kona-security-fix#84c36126e68f3268783909398ee352cac6b1dca9"
+source = "git+https://github.com/succinctlabs/hokulea-private?rev=8a383de106f63fc524e1f1f56ce545639679fbe6#8a383de106f63fc524e1f1f56ce545639679fbe6"
 dependencies = [
  "canoe-verifier",
  "canoe-verifier-address-fetcher",
@@ -5662,7 +5662,7 @@ dependencies = [
 [[package]]
 name = "kona-cli"
 version = "0.3.2"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-chains",
  "alloy-primitives",
@@ -5682,7 +5682,7 @@ dependencies = [
 [[package]]
 name = "kona-client"
 version = "1.0.2"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -5721,7 +5721,7 @@ dependencies = [
 [[package]]
 name = "kona-derive"
 version = "0.4.5"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -5742,7 +5742,7 @@ dependencies = [
 [[package]]
 name = "kona-driver"
 version = "0.4.0"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-consensus",
  "alloy-evm 0.27.2",
@@ -5763,13 +5763,13 @@ dependencies = [
 [[package]]
 name = "kona-executor"
 version = "0.4.0"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
  "alloy-evm 0.27.2",
  "alloy-op-evm 0.26.3",
- "alloy-op-hardforks 0.4.7 (git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix)",
+ "alloy-op-hardforks 0.4.7 (git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578)",
  "alloy-primitives",
  "alloy-rlp",
  "alloy-trie",
@@ -5787,14 +5787,14 @@ dependencies = [
 [[package]]
 name = "kona-genesis"
 version = "0.4.5"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-chains",
  "alloy-consensus",
  "alloy-eips",
  "alloy-genesis",
  "alloy-hardforks 0.4.7",
- "alloy-op-hardforks 0.4.7 (git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix)",
+ "alloy-op-hardforks 0.4.7 (git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578)",
  "alloy-primitives",
  "alloy-sol-types",
  "derive_more 2.1.1",
@@ -5808,7 +5808,7 @@ dependencies = [
 [[package]]
 name = "kona-hardforks"
 version = "0.4.5"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -5819,7 +5819,7 @@ dependencies = [
 [[package]]
 name = "kona-host"
 version = "1.0.2"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -5866,7 +5866,7 @@ dependencies = [
 [[package]]
 name = "kona-interop"
 version = "0.4.5"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -5888,12 +5888,12 @@ dependencies = [
 [[package]]
 name = "kona-macros"
 version = "0.1.2"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 
 [[package]]
 name = "kona-mpt"
 version = "0.3.0"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-primitives",
  "alloy-rlp",
@@ -5905,7 +5905,7 @@ dependencies = [
 [[package]]
 name = "kona-preimage"
 version = "0.3.0"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-primitives",
  "async-channel",
@@ -5919,7 +5919,7 @@ dependencies = [
 [[package]]
 name = "kona-proof"
 version = "0.3.0"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -5955,7 +5955,7 @@ dependencies = [
 [[package]]
 name = "kona-proof-interop"
 version = "0.2.0"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -5987,7 +5987,7 @@ dependencies = [
 [[package]]
 name = "kona-protocol"
 version = "0.4.5"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloc-no-stdlib",
  "alloy-consensus",
@@ -6018,7 +6018,7 @@ dependencies = [
 [[package]]
 name = "kona-providers-alloy"
 version = "0.3.3"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -6048,13 +6048,13 @@ dependencies = [
 [[package]]
 name = "kona-registry"
 version = "0.4.5"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-chains",
  "alloy-eips",
  "alloy-genesis",
  "alloy-hardforks 0.4.7",
- "alloy-op-hardforks 0.4.7 (git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix)",
+ "alloy-op-hardforks 0.4.7 (git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578)",
  "alloy-primitives",
  "kona-genesis",
  "lazy_static",
@@ -6067,7 +6067,7 @@ dependencies = [
 [[package]]
 name = "kona-std-fpvm"
 version = "0.2.0"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "async-trait",
  "buddy_system_allocator",
@@ -6079,7 +6079,7 @@ dependencies = [
 [[package]]
 name = "kona-std-fpvm-proc"
 version = "0.2.0"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "cfg-if",
  "kona-std-fpvm",
@@ -7047,11 +7047,11 @@ dependencies = [
 [[package]]
 name = "op-alloy"
 version = "0.23.1"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "op-alloy-consensus 0.23.1",
  "op-alloy-network",
- "op-alloy-provider 0.23.1 (git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix)",
+ "op-alloy-provider 0.23.1 (git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578)",
  "op-alloy-rpc-types",
  "op-alloy-rpc-types-engine 0.23.1",
 ]
@@ -7076,7 +7076,7 @@ dependencies = [
 [[package]]
 name = "op-alloy-consensus"
 version = "0.23.1"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7094,7 +7094,7 @@ dependencies = [
 [[package]]
 name = "op-alloy-network"
 version = "0.23.1"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-consensus",
  "alloy-network",
@@ -7124,7 +7124,7 @@ dependencies = [
 [[package]]
 name = "op-alloy-provider"
 version = "0.23.1"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-network",
  "alloy-primitives",
@@ -7138,7 +7138,7 @@ dependencies = [
 [[package]]
 name = "op-alloy-rpc-types"
 version = "0.23.1"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7175,7 +7175,7 @@ dependencies = [
 [[package]]
 name = "op-alloy-rpc-types-engine"
 version = "0.23.1"
-source = "git+https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq?branch=kona-proof-fix#543510ee9bcd8d1378269c180b40022524fc166b"
+source = "git+https://github.com/succinctlabs/kona-private?rev=1bec73bafa38cbb7e1c761a9603b38e58e79c578#1bec73bafa38cbb7e1c761a9603b38e58e79c578"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7217,7 +7217,7 @@ dependencies = [
 
 [[package]]
 name = "op-succinct-bindings"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "alloy",
  "alloy-sol-types",
@@ -7227,7 +7227,7 @@ dependencies = [
 
 [[package]]
 name = "op-succinct-build-utils"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "cargo_metadata",
  "sp1-build",
@@ -7235,7 +7235,7 @@ dependencies = [
 
 [[package]]
 name = "op-succinct-celestia-client-utils"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7253,7 +7253,7 @@ dependencies = [
 
 [[package]]
 name = "op-succinct-celestia-host-utils"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7281,7 +7281,7 @@ dependencies = [
 
 [[package]]
 name = "op-succinct-client-utils"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7335,7 +7335,7 @@ dependencies = [
 
 [[package]]
 name = "op-succinct-eigenda-host-utils"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -7366,11 +7366,11 @@ dependencies = [
 
 [[package]]
 name = "op-succinct-elfs"
-version = "3.5.1"
+version = "3.5.2"
 
 [[package]]
 name = "op-succinct-ethereum-client-utils"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -7386,7 +7386,7 @@ dependencies = [
 
 [[package]]
 name = "op-succinct-ethereum-host-utils"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -7405,7 +7405,7 @@ dependencies = [
 
 [[package]]
 name = "op-succinct-fp"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "alloy",
  "alloy-contract",
@@ -7468,7 +7468,7 @@ dependencies = [
 
 [[package]]
 name = "op-succinct-host-utils"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "alloy-consensus",
  "alloy-contract",
@@ -7522,7 +7522,7 @@ dependencies = [
 
 [[package]]
 name = "op-succinct-proof-utils"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "cfg-if",
  "op-succinct-celestia-host-utils",
@@ -7535,7 +7535,7 @@ dependencies = [
 
 [[package]]
 name = "op-succinct-prove"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "alloy-contract",
  "alloy-eips",
@@ -7569,7 +7569,7 @@ dependencies = [
 
 [[package]]
 name = "op-succinct-range-utils"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "anyhow",
  "kona-proof",
@@ -7582,7 +7582,7 @@ dependencies = [
 
 [[package]]
 name = "op-succinct-scripts"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "alloy-eips",
  "alloy-network",
@@ -7616,7 +7616,7 @@ dependencies = [
 
 [[package]]
 name = "op-succinct-signer-utils"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "alloy-consensus",
  "alloy-eips",
@@ -7638,7 +7638,7 @@ dependencies = [
 
 [[package]]
 name = "op-succinct-validity"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "alloy-eips",
  "alloy-primitives",
@@ -9127,7 +9127,7 @@ dependencies = [
 
 [[package]]
 name = "range"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "kona-proof",
  "op-succinct-client-utils",
@@ -9140,7 +9140,7 @@ dependencies = [
 
 [[package]]
 name = "range-celestia"
-version = "3.5.1"
+version = "3.5.2"
 dependencies = [
  "kona-proof",
  "op-succinct-celestia-client-utils",

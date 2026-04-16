@@ -26,7 +26,7 @@ edition = "2021"
 authors = ["ratankaliani", "zachobront", "fakedev9999", "yuwen01"]
 homepage = "https://succinctlabs.github.io/op-succinct/"
 repository = "https://github.com/succinctlabs/op-succinct"
-version = "3.5.1"
+version = "3.5.2"
 rust-version = "1.85"
 
 [workspace.dependencies]
@@ -182,11 +182,11 @@ alloy-sol-types = { version = "1.4.1", default-features = false }
 alloy-sol-macro = { version = "1.4.1", default-features = false }
 alloy-chains = { version = "0.2.22", default-features = false }
 
-# OP Alloy (git deps from advisory fork to unify types with kona)
-op-alloy-consensus = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix", default-features = false }
-op-alloy-rpc-types = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix", default-features = false }
-op-alloy-rpc-types-engine = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix", default-features = false }
-op-alloy-network = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix", default-features = false }
+# OP Alloy (single-source pin to private kona fork for graph consistency)
+op-alloy-consensus = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578", default-features = false }
+op-alloy-rpc-types = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578", default-features = false }
+op-alloy-rpc-types-engine = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578", default-features = false }
+op-alloy-network = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578", default-features = false }
 
 # Execution (bumped to match advisory fork's kona requirements)
 alloy-evm = { version = "0.27.2", default-features = false }
@@ -230,12 +230,11 @@ substrate-bn = { git = "https://github.com/sp1-patches/bn", tag = "patch-0.6.0-s
 sha3 = { git = "https://github.com/sp1-patches/RustCrypto-hashes", package = "sha3", tag = "patch-sha3-0.10.8-sp1-4.0.0" }
 p256 = { git = "https://github.com/sp1-patches/elliptic-curves", tag = "patch-p256-13.2-sp1-5.0.0" }
 k256 = { git = "https://github.com/sp1-patches/elliptic-curves", tag = "patch-k256-13.4-sp1-5.0.0" }
-# Patch crates.io op-alloy to use advisory fork versions, ensuring type unity
-# across all consumers (op-revm, alloy-op-evm from crates.io also use these)
-op-alloy-consensus = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-op-alloy-rpc-types = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-op-alloy-rpc-types-engine = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-op-alloy-network = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
+# Patch crates.io op-alloy to the private kona fork for single-source type unity
+op-alloy-consensus = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+op-alloy-rpc-types = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+op-alloy-rpc-types-engine = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+op-alloy-network = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
 
 # Note: alloy-tx-macros crates.io version must match alloy-consensus version
 # Both are now at 1.4.x for hokulea v1.1.4 compatibility
@@ -275,49 +274,49 @@ reth-trie-common = { git = "https://github.com/succinctlabs/reth", branch = "v1.
 # Fixes: channel decompression divergence (kona-protocol), zero output root in pipeline cursor (kona-proof)
 # Using official advisory fork from ethereum-optimism/optimism monorepo
 [patch."https://github.com/op-rs/kona"]
-kona-mpt = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-derive = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-driver = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-preimage = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-executor = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-proof = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-client = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-host = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-providers-alloy = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-protocol = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-registry = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-genesis = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-cli = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-hardforks = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-interop = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-macros = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-proof-interop = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-std-fpvm = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
-kona-std-fpvm-proc = { git = "https://github.com/ethereum-optimism/optimism-ghsa-qjmw-q2xw-v4xq", branch = "kona-proof-fix" }
+kona-mpt = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-derive = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-driver = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-preimage = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-executor = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-proof = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-client = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-host = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-providers-alloy = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-protocol = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-registry = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-genesis = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-cli = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-hardforks = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-interop = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-macros = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-proof-interop = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-std-fpvm = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
+kona-std-fpvm-proc = { git = "https://github.com/succinctlabs/kona-private", rev = "1bec73bafa38cbb7e1c761a9603b38e58e79c578" }
 
 # Patch hokulea for kona advisory fork compatibility (bumped deps + 5-arg new_oracle_pipeline_cursor)
 [patch."https://github.com/Layr-Labs/hokulea"]
-hokulea-client = { git = "https://github.com/succinctlabs/hokulea", branch = "kona-security-fix" }
-hokulea-client-bin = { git = "https://github.com/succinctlabs/hokulea", branch = "kona-security-fix" }
-hokulea-host-bin = { git = "https://github.com/succinctlabs/hokulea", branch = "kona-security-fix" }
-hokulea-compute-proof = { git = "https://github.com/succinctlabs/hokulea", branch = "kona-security-fix" }
-hokulea-eigenda = { git = "https://github.com/succinctlabs/hokulea", branch = "kona-security-fix" }
-hokulea-proof = { git = "https://github.com/succinctlabs/hokulea", branch = "kona-security-fix" }
-hokulea-witgen = { git = "https://github.com/succinctlabs/hokulea", branch = "kona-security-fix" }
-hokulea-zkvm-verification = { git = "https://github.com/succinctlabs/hokulea", branch = "kona-security-fix" }
-canoe-sp1-cc-host = { git = "https://github.com/succinctlabs/hokulea", branch = "kona-security-fix" }
-canoe-sp1-cc-verifier = { git = "https://github.com/succinctlabs/hokulea", branch = "kona-security-fix" }
-canoe-verifier-address-fetcher = { git = "https://github.com/succinctlabs/hokulea", branch = "kona-security-fix" }
-eigenda-cert = { git = "https://github.com/succinctlabs/hokulea", branch = "kona-security-fix" }
+hokulea-client = { git = "https://github.com/succinctlabs/hokulea-private", rev = "8a383de106f63fc524e1f1f56ce545639679fbe6" }
+hokulea-client-bin = { git = "https://github.com/succinctlabs/hokulea-private", rev = "8a383de106f63fc524e1f1f56ce545639679fbe6" }
+hokulea-host-bin = { git = "https://github.com/succinctlabs/hokulea-private", rev = "8a383de106f63fc524e1f1f56ce545639679fbe6" }
+hokulea-compute-proof = { git = "https://github.com/succinctlabs/hokulea-private", rev = "8a383de106f63fc524e1f1f56ce545639679fbe6" }
+hokulea-eigenda = { git = "https://github.com/succinctlabs/hokulea-private", rev = "8a383de106f63fc524e1f1f56ce545639679fbe6" }
+hokulea-proof = { git = "https://github.com/succinctlabs/hokulea-private", rev = "8a383de106f63fc524e1f1f56ce545639679fbe6" }
+hokulea-witgen = { git = "https://github.com/succinctlabs/hokulea-private", rev = "8a383de106f63fc524e1f1f56ce545639679fbe6" }
+hokulea-zkvm-verification = { git = "https://github.com/succinctlabs/hokulea-private", rev = "8a383de106f63fc524e1f1f56ce545639679fbe6" }
+canoe-sp1-cc-host = { git = "https://github.com/succinctlabs/hokulea-private", rev = "8a383de106f63fc524e1f1f56ce545639679fbe6" }
+canoe-sp1-cc-verifier = { git = "https://github.com/succinctlabs/hokulea-private", rev = "8a383de106f63fc524e1f1f56ce545639679fbe6" }
+canoe-verifier-address-fetcher = { git = "https://github.com/succinctlabs/hokulea-private", rev = "8a383de106f63fc524e1f1f56ce545639679fbe6" }
+eigenda-cert = { git = "https://github.com/succinctlabs/hokulea-private", rev = "8a383de106f63fc524e1f1f56ce545639679fbe6" }
 
 # Patch hana for kona advisory fork compatibility (5-arg new_oracle_pipeline_cursor)
 [patch."https://github.com/celestiaorg/hana"]
-hana-client = { git = "https://github.com/succinctlabs/hana", branch = "kona-security-fix" }
-hana-host = { git = "https://github.com/succinctlabs/hana", branch = "kona-security-fix" }
-hana-blobstream = { git = "https://github.com/succinctlabs/hana", branch = "kona-security-fix" }
-hana-celestia = { git = "https://github.com/succinctlabs/hana", branch = "kona-security-fix" }
-hana-oracle = { git = "https://github.com/succinctlabs/hana", branch = "kona-security-fix" }
-hana-proofs = { git = "https://github.com/succinctlabs/hana", branch = "kona-security-fix" }
+hana-client = { git = "https://github.com/succinctlabs/hana-private", rev = "501e9c888d096668a7188244189dcf63aa41d1c3" }
+hana-host = { git = "https://github.com/succinctlabs/hana-private", rev = "501e9c888d096668a7188244189dcf63aa41d1c3" }
+hana-blobstream = { git = "https://github.com/succinctlabs/hana-private", rev = "501e9c888d096668a7188244189dcf63aa41d1c3" }
+hana-celestia = { git = "https://github.com/succinctlabs/hana-private", rev = "501e9c888d096668a7188244189dcf63aa41d1c3" }
+hana-oracle = { git = "https://github.com/succinctlabs/hana-private", rev = "501e9c888d096668a7188244189dcf63aa41d1c3" }
+hana-proofs = { git = "https://github.com/succinctlabs/hana-private", rev = "501e9c888d096668a7188244189dcf63aa41d1c3" }
 
 # Patch succinctlabs/kzg-rs git dep (from rsp/hokulea chain) to crates.io 0.2.7
 # kzg-rs 0.2.8 (git) uses sp1_bls12_381 sp1-6.0.0 which is rv64-only

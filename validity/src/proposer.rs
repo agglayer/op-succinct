@@ -974,9 +974,10 @@ where
                 let receipt = self
                     .driver_config
                     .signer
-                    .send_transaction_request(
+                    .send_transaction_request_with_timeout(
                         self.driver_config.fetcher.as_ref().rpc_config.l1_rpc.clone(),
                         transaction_request,
+                        self.requester_config.tx_confirmation_timeout,
                     )
                     .await?;
 
@@ -1366,9 +1367,10 @@ where
 
             self.driver_config
                 .signer
-                .send_transaction_request(
+                .send_transaction_request_with_timeout(
                     self.driver_config.fetcher.as_ref().rpc_config.l1_rpc.clone(),
                     transaction_request,
+                    self.requester_config.tx_confirmation_timeout,
                 )
                 .await
                 .map_err(|e| anyhow!("Failed to relay aggregation proof onchain. end_block: {}, checkpointed_l1_block_number: {}, error: {}", completed_agg_proof.end_block, completed_agg_proof.checkpointed_l1_block_number.unwrap(), e))?
@@ -1389,9 +1391,10 @@ where
 
             self.driver_config
                 .signer
-                .send_transaction_request(
+                .send_transaction_request_with_timeout(
                     self.driver_config.fetcher.as_ref().rpc_config.l1_rpc.clone(),
                     transaction_request,
+                    self.requester_config.tx_confirmation_timeout,
                 )
                 .await?
         };

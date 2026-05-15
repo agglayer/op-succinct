@@ -92,6 +92,8 @@ Depending on the one you choose, you must provide the corresponding environment 
 | `L1_BEACON_RPC` | L1 Beacon RPC endpoint URL | (Only used if `FAST_FINALITY_MODE` is `true`) |
 | `L2_NODE_RPC` | L2 Node RPC endpoint URL | (Only used if `FAST_FINALITY_MODE` is `true`) |
 | `SAFE_DB_FALLBACK` | Whether to fallback to timestamp-based L1 head estimation even though SafeDB is not activated for op-node. When `false`, proposer will return an error if SafeDB is not available. It is by default `false` since using the fallback mechanism will result in higher proving cost. | `false` |
+| `L1_BLOCK_TAG` | Which L1 block to anchor proof generation against. One of `finalized`, `safe`, `latest`. Non-default values trade finality for latency. On Ethereum/EigenDA backends they require SafeDB to be activated on op-node (the proposer hard-fails at startup otherwise). On Celestia backends non-default values are rejected at startup — both by the proposer binary and by the covered operator-facing utility scripts under `scripts/` that initialize a host — because the Blobstream-driven proving path does not honor them. See the Validity proposer docs for the full risk table. | `finalized` |
+| `L1_CONFIRMATIONS` | Number of additional L1 block confirmations to subtract from the block returned by `L1_BLOCK_TAG`. Subject to the same backend restrictions as `L1_BLOCK_TAG`. | `0` |
 | `PROPOSER_METRICS_PORT` | The port to expose metrics on. Update prometheus.yml to use this port, if using docker compose. | `9000` |
 | `FAST_FINALITY_PROVING_LIMIT` | Maximum number of concurrent proving tasks allowed in fast finality mode. | `1` |
 | `USE_KMS_REQUESTER` | Whether to expect NETWORK_PRIVATE_KEY to be an AWS KMS key ARN instead of a plaintext private key. | `false` |
@@ -172,6 +174,22 @@ The proposer will run indefinitely, creating new games and optionally resolving 
 All long-running work executes in dedicated Tokio tasks stored in a `TaskMap`, preventing duplicate submissions while allowing creation/defense/resolution/bond claiming to progress in parallel. Fast finality mode additionally enforces `FAST_FINALITY_PROVING_LIMIT` before spawning new fast finality proving tasks.
 
 Metrics are published by a separate background collector that samples the canonical head, finalized head, and active proving task count.
+
+### Proposer Metrics
+
+Use `op_succinct_fp_canonical_head_game_index` as the primary signal for whether the proposer has a cached canonical head.
+
+Values:
+- `>= 0`: cached canonical head game index
+- `-1`: no canonical head game is currently cached
+
+Do not use the canonical-head / latest-game L2 block metric as the head-clear signal. The proposer may preserve an anchor-derived L2 block baseline even when `op_succinct_fp_canonical_head_game_index = -1`, so it can create the first proposal.
+
+Useful dashboards and alerts:
+- sustained `op_succinct_fp_canonical_head_game_index = -1` after games should exist
+- decreases in `op_succinct_fp_canonical_head_game_index`, which can indicate canonical head rewind or orphaning
+- the gap between `op_succinct_fp_anchor_game_index` and `op_succinct_fp_canonical_head_game_index`
+- `op_succinct_fp_finalized_l2_block_number = 0`, which indicates that finalized lookup is currently unavailable
 
 ## Features
 

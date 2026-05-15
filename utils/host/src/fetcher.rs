@@ -6,7 +6,10 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use crate::rpc_types::{OutputResponse, SafeHeadResponse};
+use crate::{
+    l1_selection::L1BlockSelectionConfig,
+    rpc_types::{OutputResponse, SafeHeadResponse},
+};
 use alloy_consensus::{BlockHeader, Header};
 use alloy_eips::{BlockId, BlockNumberOrTag};
 use alloy_primitives::{address, keccak256, Address, Bytes, B256, U256, U64};
@@ -52,6 +55,45 @@ async fn l2_to_l1_message_passer_storage_root(
     }
 }
 
+/// JSON-RPC "method not found" error code defined by the JSON-RPC 2.0 spec.
+const JSON_RPC_METHOD_NOT_FOUND: i64 = -32601;
+
+/// Classify a raw JSON-RPC response body from `optimism_safeHeadAtL1Block` as either
+/// "SafeDB active", "SafeDB genuinely unavailable", or an unclassified error to propagate.
+///
+/// See [`OPSuccinctDataFetcher::is_safe_db_activated`] for the caller-visible contract.
+fn classify_safe_db_probe_outcome(response: &serde_json::Value) -> Result<bool> {
+    if let Some(error) = response.get("error") {
+        let code = error.get("code").and_then(|v| v.as_i64());
+        let message = error.get("message").and_then(|v| v.as_str()).unwrap_or("Unknown error");
+
+        if code == Some(JSON_RPC_METHOD_NOT_FOUND) {
+            return Ok(false);
+        }
+        // op-node's `disabledSafeDB` returns a generic-code error whose message identifies
+        // SafeDB (e.g. "safeDB is not enabled"). Match on the token to cover op-node versions
+        // without relying on a code that upstream does not assign.
+        if message.to_lowercase().contains("safedb") {
+            return Ok(false);
+        }
+        return Err(anyhow!("Error calling optimism_safeHeadAtL1Block: {message}"));
+    }
+
+    let Some(result) = response.get("result") else {
+        return Err(anyhow!(
+            "Malformed JSON-RPC response for optimism_safeHeadAtL1Block: neither `result` nor `error` present"
+        ));
+    };
+
+    // "Active" means the node returned a parseable SafeHeadResponse, not merely that a
+    // `result` field exists. A malformed / null / empty result is treated as an error so
+    // callers do not conclude SafeDB is active on a degraded / mock upstream.
+    let _: SafeHeadResponse = serde_json::from_value(result.clone()).with_context(|| {
+        "Malformed optimism_safeHeadAtL1Block result: expected SafeHeadResponse".to_string()
+    })?;
+    Ok(true)
+}
+
 #[derive(Clone)]
 /// The OPSuccinctDataFetcher struct is used to fetch the L2 output data and L2 claim data for a
 /// given block number. It is used to generate the boot info for the native host program.
@@ -63,6 +105,10 @@ pub struct OPSuccinctDataFetcher {
     pub rollup_config: Option<RollupConfig>,
     pub rollup_config_path: Option<PathBuf>,
     pub l1_config_path: Option<PathBuf>,
+    /// Selection of which L1 block to anchor proof generation against. Defaults to
+    /// `finalized` with zero confirmations so existing deployments retain byte-identical
+    /// behavior.
+    pub l1_selection: L1BlockSelectionConfig,
 }
 
 impl Default for OPSuccinctDataFetcher {
@@ -138,7 +184,18 @@ pub struct FeeData {
 
 impl OPSuccinctDataFetcher {
     /// Gets the RPC URL's and saves the rollup config for the chain to the rollup config file.
+    ///
+    /// Reads `L1_BLOCK_TAG` / `L1_CONFIRMATIONS` from the environment via
+    /// [`L1BlockSelectionConfig::from_env_or_default`] (panics on malformed values, with a
+    /// message naming the offending env var). Proposer entry points should call
+    /// [`L1BlockSelectionConfig::from_env`] beforehand to surface a clean startup error.
     pub fn new() -> Self {
+        Self::new_with_l1_selection(L1BlockSelectionConfig::from_env_or_default())
+    }
+
+    /// Construct a fetcher with an explicit L1 selection config, bypassing the env parse.
+    /// Intended for tests and override scenarios.
+    pub fn new_with_l1_selection(l1_selection: L1BlockSelectionConfig) -> Self {
         let rpc_config = get_rpcs_from_env();
 
         let l1_provider =
@@ -153,11 +210,22 @@ impl OPSuccinctDataFetcher {
             rollup_config: None,
             rollup_config_path: None,
             l1_config_path: None,
+            l1_selection,
         }
     }
 
     /// Initialize the fetcher with a rollup config.
+    ///
+    /// See [`OPSuccinctDataFetcher::new`] for env-parsing behavior.
     pub async fn new_with_rollup_config() -> Result<Self> {
+        Self::new_with_rollup_config_and_l1_selection(L1BlockSelectionConfig::from_env_or_default())
+            .await
+    }
+
+    /// Initialize the fetcher with a rollup config and explicit L1 selection.
+    pub async fn new_with_rollup_config_and_l1_selection(
+        l1_selection: L1BlockSelectionConfig,
+    ) -> Result<Self> {
         let rpc_config = get_rpcs_from_env();
 
         let l1_provider =
@@ -184,7 +252,29 @@ impl OPSuccinctDataFetcher {
             rollup_config: Some(rollup_config),
             rollup_config_path: Some(rollup_config_path),
             l1_config_path: Some(l1_config_path),
+            l1_selection,
         })
+    }
+
+    /// Resolve the L1 [`Header`] selected by the configured tag and confirmations.
+    ///
+    /// For the default selection (`finalized`, 0) this returns the finalized header directly.
+    /// For non-default selections it fetches the tag's header, then walks back by
+    /// `confirmations` blocks (saturating at 0).
+    pub async fn resolve_selected_l1_header(&self) -> Result<Header> {
+        let base = self.get_l1_header(self.l1_selection.tag.to_block_id()).await?;
+        if self.l1_selection.confirmations == 0 {
+            return Ok(base);
+        }
+        let target_number = base.number.saturating_sub(self.l1_selection.confirmations);
+        if target_number == base.number {
+            // Only reachable when `base.number == 0` (genesis): `confirmations > 0` here, so
+            // `saturating_sub` only fixes back to `base.number` when the base is already 0.
+            // For larger over-confirmations (e.g. base=100, confirmations=1_000_000) this branch
+            // does not fire and the call below fetches block 0.
+            return Ok(base);
+        }
+        self.get_l1_header(target_number.into()).await
     }
 
     pub async fn get_l2_chain_id(&self) -> Result<u64> {
@@ -281,32 +371,44 @@ impl OPSuccinctDataFetcher {
         }
     }
 
-    /// Finds the L1 block at the provided timestamp.
+    /// Finds the L1 block at the provided timestamp, bounded above by the configured L1
+    /// selection.
+    ///
+    /// Used by the timestamp-based fallback for `get_l1_head`: once the proposer has decided
+    /// which L1 block to anchor to, the fallback search must not return a block past it.
     pub async fn find_l1_block_by_timestamp(&self, target_timestamp: u64) -> Result<(B256, u64)> {
-        self.find_block_by_timestamp(&self.l1_provider, target_timestamp).await
+        let upper_bound_block = self.resolve_selected_l1_header().await?.number;
+        self.find_block_by_timestamp(&self.l1_provider, target_timestamp, upper_bound_block).await
     }
 
     /// Finds the L2 block at the provided timestamp.
+    ///
+    /// Bounded by L2 finalized; this path intentionally does not follow the L1 selection
+    /// config because L2 finality is a separate concern.
     pub async fn find_l2_block_by_timestamp(&self, target_timestamp: u64) -> Result<(B256, u64)> {
-        self.find_block_by_timestamp(&self.l2_provider, target_timestamp).await
+        let upper_bound_block = self
+            .l2_provider
+            .get_block(BlockId::finalized())
+            .await?
+            .ok_or_else(|| anyhow!("Failed to get finalized L2 block for timestamp search bound"))?
+            .header()
+            .number();
+        self.find_block_by_timestamp(&self.l2_provider, target_timestamp, upper_bound_block).await
     }
 
-    /// Finds the block at the provided timestamp, using the provided provider.
+    /// Finds the block at the provided timestamp, using the provided provider, bounded above
+    /// by `upper_bound_block` (inclusive).
     async fn find_block_by_timestamp<N>(
         &self,
         provider: &RootProvider<N>,
         target_timestamp: u64,
+        upper_bound_block: u64,
     ) -> Result<(B256, u64)>
     where
         N: Network,
     {
-        let latest_block = provider.get_block(BlockId::finalized()).await?;
         let mut low = 0;
-        let mut high = if let Some(block) = latest_block {
-            block.header().number()
-        } else {
-            bail!("Failed to get latest block");
-        };
+        let mut high = upper_bound_block;
 
         while low <= high {
             let mid = (low + high) / 2;
@@ -557,6 +659,32 @@ impl OPSuccinctDataFetcher {
         serde_json::from_value(response["result"].clone()).map_err(Into::into)
     }
 
+    /// Execute a JSON-RPC call and return the raw response body without collapsing
+    /// JSON-RPC-level `error` objects into `Err`. HTTP status failures (4xx/5xx) are
+    /// surfaced explicitly via [`reqwest::Response::error_for_status`] so callers can
+    /// distinguish transport / auth / upstream health failures from protocol errors.
+    async fn fetch_rpc_data_raw(
+        url: &Url,
+        method: &str,
+        params: Vec<Value>,
+    ) -> Result<serde_json::Value> {
+        let client = reqwest::Client::new();
+        let response = client
+            .post(url.clone())
+            .json(&json!({
+                "jsonrpc": "2.0",
+                "method": method,
+                "params": params,
+                "id": 1
+            }))
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<serde_json::Value>()
+            .await?;
+        Ok(response)
+    }
+
     /// Fetch arbitrary data from the RPC.
     pub async fn fetch_rpc_data_with_mode<T>(
         &self,
@@ -665,8 +793,9 @@ impl OPSuccinctDataFetcher {
     /// Get the L1 block from which the `l2_end_block` can be derived.
     ///
     /// Use binary search to find the first L1 block with an L2 safe head >= l2_end_block.
+    /// Bounded above by the configured L1 selection.
     pub async fn get_safe_l1_block_for_l2_block(&self, l2_end_block: u64) -> Result<(B256, u64)> {
-        let latest_l1_header = self.get_l1_header(BlockId::finalized()).await?;
+        let latest_l1_header = self.resolve_selected_l1_header().await?;
 
         // Get the l1 origin of the l2 end block.
         let l2_end_block_hex = format!("0x{l2_end_block:x}");
@@ -718,6 +847,10 @@ impl OPSuccinctDataFetcher {
     /// for the end L2 block was posted. If the safeDB is not activated:
     ///   - If `safe_db_fallback` is `true`, estimate the L1 head based on the L2 block timestamp.
     ///   - Else, return an error.
+    ///
+    /// The timestamp-based fallback caps at the configured L1 selection rather than
+    /// `finalized` directly. For the default selection (`finalized`, 0) this is identical to
+    /// the historical behavior; for non-default selections it follows the operator's choice.
     pub async fn get_l1_head(
         &self,
         l2_end_block: u64,
@@ -736,12 +869,11 @@ impl OPSuccinctDataFetcher {
                     let max_batch_post_delay_minutes = 40;
                     let l2_block_timestamp =
                         self.get_l2_header(l2_end_block.into()).await?.timestamp;
-                    let finalized_l1_timestamp =
-                        self.get_l1_header(BlockId::finalized()).await?.timestamp;
+                    let upper_bound_timestamp = self.resolve_selected_l1_header().await?.timestamp;
 
                     let target_timestamp = min(
                         l2_block_timestamp + (max_batch_post_delay_minutes * 60),
-                        finalized_l1_timestamp,
+                        upper_bound_timestamp,
                     );
                     self.find_l1_block_by_timestamp(target_timestamp).await
                 } else {
@@ -788,17 +920,26 @@ impl OPSuccinctDataFetcher {
     }
 
     /// Check if the safeDB is activated on the L2 node.
+    ///
+    /// Probes `optimism_safeHeadAtL1Block` and classifies the outcome into three buckets:
+    /// - `Ok(true)` if the node returns a parseable [`SafeHeadResponse`].
+    /// - `Ok(false)` only if the node explicitly reports that SafeDB is unavailable — either the
+    ///   JSON-RPC method is unknown (`-32601`) or the error message mentions SafeDB (covering
+    ///   op-node's `disabledSafeDB` path, which returns messages like `"safeDB is not enabled"`).
+    /// - `Err(..)` for transport, HTTP (5xx / auth), deserialization, and any other RPC error, so
+    ///   callers that reclassified those as "SafeDB inactive" (e.g. startup validation) now surface
+    ///   the real failure instead.
     pub async fn is_safe_db_activated(&self) -> Result<bool> {
         let finalized_l1_header = self.get_l1_header(BlockId::finalized()).await?;
         let l1_block_number_hex = format!("0x{:x}", finalized_l1_header.number);
-        let result: Result<SafeHeadResponse, _> = self
-            .fetch_rpc_data_with_mode(
-                RPCMode::L2Node,
-                "optimism_safeHeadAtL1Block",
-                vec![l1_block_number_hex.into()],
-            )
-            .await;
-        Ok(result.is_ok())
+        let url = self.get_rpc_url(RPCMode::L2Node)?;
+        let response = Self::fetch_rpc_data_raw(
+            url,
+            "optimism_safeHeadAtL1Block",
+            vec![l1_block_number_hex.into()],
+        )
+        .await?;
+        classify_safe_db_probe_outcome(&response)
     }
 
     /// Get the L2 output data for a given block number and save the boot info to a file in the data
@@ -926,5 +1067,73 @@ mod tests {
         config_b.block_time = config_a.block_time + 1;
 
         assert_ne!(hash_rollup_config(&config_a), hash_rollup_config(&config_b));
+    }
+
+    #[test]
+    fn safe_db_classifier_active_on_parseable_result() {
+        let response = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {
+                "l1Block": {
+                    "hash": "0x0000000000000000000000000000000000000000000000000000000000000001",
+                    "number": 100,
+                },
+                "safeHead": {
+                    "hash": "0x0000000000000000000000000000000000000000000000000000000000000002",
+                    "number": 42,
+                },
+            },
+        });
+        assert!(classify_safe_db_probe_outcome(&response).unwrap());
+    }
+
+    #[test]
+    fn safe_db_classifier_inactive_on_method_not_found() {
+        let response = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": { "code": -32601, "message": "the method optimism_safeHeadAtL1Block does not exist" },
+        });
+        assert!(!classify_safe_db_probe_outcome(&response).unwrap());
+    }
+
+    #[test]
+    fn safe_db_classifier_inactive_on_disabled_safedb_message() {
+        // op-node `disabledSafeDB` returns a generic-code error with a SafeDB-specific message.
+        let response = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": { "code": -32000, "message": "safeDB is not enabled" },
+        });
+        assert!(!classify_safe_db_probe_outcome(&response).unwrap());
+    }
+
+    #[test]
+    fn safe_db_classifier_errs_on_unrelated_rpc_error() {
+        // Transport / auth / upstream health failures must not be collapsed into SafeDB-off.
+        let response = json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "error": { "code": -32000, "message": "unauthorized" },
+        });
+        let err = classify_safe_db_probe_outcome(&response).unwrap_err();
+        assert!(err.to_string().contains("unauthorized"), "error = {err}");
+    }
+
+    #[test]
+    fn safe_db_classifier_errs_on_malformed_response() {
+        let response = json!({ "jsonrpc": "2.0", "id": 1 });
+        assert!(classify_safe_db_probe_outcome(&response).is_err());
+    }
+
+    #[test]
+    fn safe_db_classifier_errs_on_malformed_result_shape() {
+        // A `null` or empty `result` must not be misread as "SafeDB active".
+        let response = json!({ "jsonrpc": "2.0", "id": 1, "result": null });
+        assert!(classify_safe_db_probe_outcome(&response).is_err());
+
+        let response = json!({ "jsonrpc": "2.0", "id": 1, "result": {} });
+        assert!(classify_safe_db_probe_outcome(&response).is_err());
     }
 }

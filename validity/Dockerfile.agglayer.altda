@@ -1,3 +1,8 @@
+# AggLayer + AltDA (Validium) validity proposer.
+#
+# Built with `--no-default-features` so the `ethereum` feature is NOT enabled: the only
+# DA backend compiled in is AltDA, and the range ELF is `altda-range-elf-embedded`.
+
 # Build stage
 FROM rust:1.85 AS builder
 
@@ -11,6 +16,11 @@ RUN apt-get update && apt-get install -y \
     protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Go 1.24 (required for sp1-recursion-gnark-ffi)
+RUN curl -LO https://go.dev/dl/go1.24.0.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go1.24.0.linux-amd64.tar.gz && \
+    rm go1.24.0.linux-amd64.tar.gz
+ENV PATH="/usr/local/go/bin:${PATH}"
 
 WORKDIR /build
 
@@ -28,7 +38,8 @@ ENV SQLX_OFFLINE=true
 RUN --mount=type=ssh \
     --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/build/target \
-    cargo build --bin validity --bin fetch-l2oo-config --release --features agglayer && \
+    cargo build --bin validity --bin fetch-l2oo-config --release \
+        --no-default-features --features agglayer,altda && \
     cp target/release/validity /build/validity-proposer && \
     cp target/release/fetch-l2oo-config /build/fetch-l2oo-config
 
@@ -57,6 +68,9 @@ RUN curl -L https://sp1.succinct.xyz | bash && \
 # Copy only the built binaries from builder
 COPY --from=builder /build/validity-proposer /usr/local/bin/validity-proposer
 COPY --from=builder /build/fetch-l2oo-config /usr/local/bin/fetch-l2oo-config
+
+# Set jemalloc flags to aggressively release memory to avoid memory fragmentation.
+ENV JEMALLOC_SYS_WITH_MALLOC_CONF="background_thread:true,narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0,abort_conf:true"
 
 # Run the server from its permanent location
 CMD ["/usr/local/bin/validity-proposer"]

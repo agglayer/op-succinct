@@ -127,7 +127,10 @@ op-succinct-host-utils = { path = "utils/host" }
 op-succinct-build-utils = { path = "utils/build" }
 op-succinct-elfs = { path = "utils/elfs" }
 op-succinct-validity = { path = "validity" }
-op-succinct-fp = { path = "fault-proof" }
+# DA backend comes from the depending crate's own feature (e.g. `op-succinct-fp/altda`),
+# so defaults must stay off here: otherwise this crate's `default = ["ethereum"]` puts
+# `ethereum` back into the graph and `--no-default-features` on the CLI has no effect.
+op-succinct-fp = { path = "fault-proof", default-features = false }
 op-succinct-ethereum-client-utils = { path = "utils/ethereum/client" }
 op-succinct-ethereum-host-utils = { path = "utils/ethereum/host" }
 op-succinct-celestia-client-utils = { path = "utils/celestia/client" }
@@ -136,7 +139,9 @@ op-succinct-eigenda-client-utils = { path = "utils/eigenda/client" }
 op-succinct-eigenda-host-utils = { path = "utils/eigenda/host" }
 op-succinct-altda-client-utils = { path = "utils/altda/client" }
 op-succinct-altda-host-utils = { path = "utils/altda/host" }
-op-succinct-proof-utils = { path = "utils/proof" }
+# Defaults off for the same reason as `op-succinct-fp` above: every dependent already
+# forwards its own DA feature (`ethereum`, `altda`, `celestia`, `eigenda`) to this crate.
+op-succinct-proof-utils = { path = "utils/proof", default-features = false }
 op-succinct-signer-utils = { path = "utils/signer" }
 op-succinct-signer-gcp-utils = { path = "utils/signer-gcp" }
 op-succinct-range-utils = { path = "programs/range/utils" }

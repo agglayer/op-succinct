@@ -1,4 +1,6 @@
-use std::{collections::HashMap, ops::Range, str::FromStr, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap, future::Future, ops::Range, str::FromStr, sync::Arc, time::Duration,
+};
 
 #[cfg(not(feature = "agglayer"))]
 use {
@@ -15,7 +17,10 @@ use alloy_provider::Provider;
 use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
 use futures_util::{stream, StreamExt, TryStreamExt};
-use op_succinct_client_utils::{boot::hash_rollup_config, types::u32_to_u8};
+use op_succinct_client_utils::{
+    boot::{hash_rollup_config, BootInfoStruct},
+    types::u32_to_u8,
+};
 use op_succinct_elfs::AGGREGATION_ELF;
 use op_succinct_host_utils::{
     fetcher::OPSuccinctDataFetcher,
@@ -32,7 +37,10 @@ use op_succinct_proof_utils::{
 use op_succinct_signer_utils::SignerLock;
 use sp1_sdk::{
     network::{
-        proto::types::{ExecutionStatus, FulfillmentStatus},
+        proto::{
+            types::{ExecutionStatus, FulfillmentStatus},
+            GetProofRequestStatusResponse,
+        },
         NetworkMode,
     },
     Elf, HashableKey, NetworkProver, Prover, ProverClient, ProvingKey, SP1Proof,
@@ -51,6 +59,9 @@ use crate::{
 /// Number of consecutive poll failures before a cluster proof is marked as permanently failed.
 const MAX_CONSECUTIVE_POLL_FAILURES: u32 = 3;
 
+/// Maximum number of legacy completed ranges hydrated in one proposer loop.
+const RANGE_METADATA_HYDRATION_LIMIT: i64 = 100;
+
 /// Select the L1 block number to checkpoint for an aggregation proof.
 ///
 /// The aggregation guest walks L1 headers back from the checkpointed head *by hash* and requires
@@ -68,6 +79,104 @@ const MAX_CONSECUTIVE_POLL_FAILURES: u32 = 3;
 /// `None` (no completed range proof has a recorded `l1_head_block_number`) falls back to `safe`.
 fn select_checkpoint_block_number(safe_block_number: u64, batch_max_l1_head: Option<u64>) -> u64 {
     batch_max_l1_head.map_or(safe_block_number, |max| max.max(safe_block_number))
+}
+
+/// Return the end of the completed range chain beginning at `expected_start`.
+fn highest_contiguous_end(
+    expected_start: i64,
+    completed_ranges: &[(i64, i64)],
+) -> Result<Option<i64>> {
+    let mut current_end = expected_start;
+    let mut found = false;
+
+    for &(start, end) in completed_ranges {
+        if start > current_end {
+            break;
+        }
+        if start < current_end {
+            return Err(anyhow!(
+                "Completed range ({start}, {end}] overlaps the contiguous chain ending at {current_end}"
+            ));
+        }
+        if end <= start {
+            return Err(anyhow!("Completed range ({start}, {end}] is empty or reversed"));
+        }
+
+        current_end = end;
+        found = true;
+    }
+
+    Ok(found.then_some(current_end))
+}
+
+async fn handle_terminal_proof_failure_before_request_details<F, FailureFut, DetailsFut, T>(
+    request: OPSuccinctRequest,
+    status: &GetProofRequestStatusResponse,
+    current_time: u64,
+    handle_failed: F,
+    request_details: DetailsFut,
+) -> Result<Option<T>>
+where
+    F: FnOnce(OPSuccinctRequest, i32) -> FailureFut,
+    FailureFut: Future<Output = Result<()>>,
+    DetailsFut: Future<Output = Result<T>>,
+{
+    if current_time > status.deadline() {
+        if let Err(error) = handle_failed(request.clone(), status.execution_status()).await {
+            ValidityGauge::RetryErrorCount.increment(1.0);
+            return Err(error);
+        }
+
+        ValidityGauge::ProofRequestRetryCount.increment(1.0);
+        ValidityGauge::ProofRequestTimeoutErrorCount.increment(1.0);
+
+        warn!(
+            proof_id = request.id,
+            start_block = request.start_block,
+            end_block = request.end_block,
+            req_type = ?request.req_type,
+            deadline = status.deadline(),
+            current_time,
+            "Proof request timed out"
+        );
+        return Ok(None);
+    }
+
+    if status.fulfillment_status() != FulfillmentStatus::Unfulfillable as i32 {
+        return Ok(Some(request_details.await?));
+    }
+
+    match request.req_type {
+        RequestType::Range => {
+            warn!(
+                proof_id = request.id,
+                start_block = request.start_block,
+                end_block = request.end_block,
+                proof_request_time = ?request.proof_request_time,
+                total_tx_fees = %request.total_tx_fees,
+                total_transactions = request.total_nb_transactions,
+                witnessgen_duration_s = request.witnessgen_duration,
+                total_eth_gas_used = request.total_eth_gas_used,
+                total_l1_fees = %request.total_l1_fees,
+                execution_status = ?status.execution_status(),
+                "Range proof request failed - unfulfillable"
+            );
+        }
+        RequestType::Aggregation => {
+            warn!(
+                proof_id = request.id,
+                start_block = request.start_block,
+                end_block = request.end_block,
+                witnessgen_duration_s = request.witnessgen_duration,
+                execution_status = ?status.execution_status(),
+                "Aggregation proof request failed - unfulfillable"
+            );
+        }
+    }
+
+    handle_failed(request, status.execution_status()).await?;
+    ValidityGauge::ProofRequestRetryCount.increment(1.0);
+    Ok(None)
 }
 
 /// Configuration for the driver.
@@ -372,6 +481,162 @@ where
         Ok(())
     }
 
+    /// Verify that active completed range proofs still reference canonical L1 blocks.
+    async fn reconcile_completed_range_canonicality(&self) -> Result<bool> {
+        let latest_proposed_block = get_latest_proposed_block_number(
+            self.contract_config.l2oo_address,
+            self.driver_config.fetcher.as_ref(),
+        )
+        .await? as i64;
+        let db = &self.driver_config.driver_db_client;
+        let commitments = &self.program_config.commitments;
+        let l1_chain_id = self.requester_config.l1_chain_id;
+        let l2_chain_id = self.requester_config.l2_chain_id;
+
+        let missing = db
+            .fetch_missing_range_metadata(
+                commitments,
+                latest_proposed_block,
+                l1_chain_id,
+                l2_chain_id,
+                RANGE_METADATA_HYDRATION_LIMIT + 1,
+            )
+            .await?;
+        let more_metadata_remains = missing.len() > RANGE_METADATA_HYDRATION_LIMIT as usize;
+
+        for range in missing.iter().take(RANGE_METADATA_HYDRATION_LIMIT as usize) {
+            let proof_bytes = range.proof.as_ref().ok_or_else(|| {
+                anyhow!(
+                    "Completed range ({}, {}] has no proof bytes",
+                    range.start_block,
+                    range.end_block
+                )
+            })?;
+            let mut proof: SP1ProofWithPublicValues = bincode::deserialize(proof_bytes)
+                .with_context(|| {
+                    format!(
+                        "Failed to deserialize completed range ({}, {}]",
+                        range.start_block, range.end_block
+                    )
+                })?;
+            let boot_info: BootInfoStruct = proof.public_values.read();
+            let expected_end_block =
+                u64::try_from(range.end_block).context("Completed range end block is negative")?;
+            anyhow::ensure!(
+                boot_info.l2BlockNumber == expected_end_block,
+                "Completed range ({}, {}] reports L2 block {}",
+                range.start_block,
+                range.end_block,
+                boot_info.l2BlockNumber
+            );
+            anyhow::ensure!(
+                boot_info.rollupConfigHash == commitments.rollup_config_hash,
+                "Completed range ({}, {}] has a different rollup config hash",
+                range.start_block,
+                range.end_block
+            );
+
+            let l1_head_number = if let Some(number) = range.l1_head_block_number {
+                u64::try_from(number).context("Completed range L1 head number is negative")?
+            } else {
+                self.driver_config.fetcher.get_l1_header(boot_info.l1Head.into()).await?.number
+            };
+            db.update_l1_head(
+                range.id,
+                i64::try_from(l1_head_number).context("Completed range L1 head is too large")?,
+                boot_info.l1Head,
+            )
+            .await?;
+        }
+
+        if more_metadata_remains {
+            info!(
+                hydrated = RANGE_METADATA_HYDRATION_LIMIT,
+                "Deferring proof scheduling while legacy range metadata is hydrated"
+            );
+            return Ok(false);
+        }
+
+        let completed_ranges = db
+            .fetch_completed_range_metadata(
+                commitments,
+                latest_proposed_block,
+                l1_chain_id,
+                l2_chain_id,
+            )
+            .await?;
+        let mut canonical_hashes = HashMap::new();
+
+        for range in &completed_ranges {
+            let l1_head_number = range.l1_head_block_number.ok_or_else(|| {
+                anyhow!(
+                    "Completed range ({}, {}] has no L1 head number",
+                    range.start_block,
+                    range.end_block
+                )
+            })?;
+            let l1_head_number = u64::try_from(l1_head_number)
+                .context("Completed range L1 head number is negative")?;
+            if let std::collections::hash_map::Entry::Vacant(entry) =
+                canonical_hashes.entry(l1_head_number)
+            {
+                let header =
+                    self.driver_config.fetcher.get_l1_header(l1_head_number.into()).await?;
+                entry.insert(header.hash_slow());
+            }
+        }
+
+        let mut stale_range_ids = Vec::new();
+        for range in &completed_ranges {
+            let l1_head_number = u64::try_from(range.l1_head_block_number.ok_or_else(|| {
+                anyhow!(
+                    "Completed range ({}, {}] has no L1 head number",
+                    range.start_block,
+                    range.end_block
+                )
+            })?)
+            .context("Completed range L1 head number is negative")?;
+            let stored_hash_bytes = range.l1_head_block_hash.as_deref().ok_or_else(|| {
+                anyhow!(
+                    "Completed range ({}, {}] has no L1 head hash",
+                    range.start_block,
+                    range.end_block
+                )
+            })?;
+            let stored_hash = B256::try_from(stored_hash_bytes).map_err(|_| {
+                anyhow!(
+                    "Completed range ({}, {}] has an invalid L1 head hash",
+                    range.start_block,
+                    range.end_block
+                )
+            })?;
+            let canonical_hash = canonical_hashes.get(&l1_head_number).ok_or_else(|| {
+                anyhow!("Canonical L1 hash was not fetched for block {l1_head_number}")
+            })?;
+            if canonical_hash != &stored_hash {
+                stale_range_ids.push(range.id);
+                warn!(
+                    request_id = range.id,
+                    start_block = range.start_block,
+                    end_block = range.end_block,
+                    l1_head_number,
+                    ?stored_hash,
+                    ?canonical_hash,
+                    "Completed range proof references a noncanonical L1 block"
+                );
+            }
+        }
+
+        let (range_count, aggregation_count) = db
+            .invalidate_noncanonical_ranges(&stale_range_ids, commitments, l1_chain_id, l2_chain_id)
+            .await?;
+        if range_count > 0 {
+            warn!(range_count, aggregation_count, "Invalidated noncanonical proof requests");
+        }
+
+        Ok(true)
+    }
+
     /// Handle all proof requests in the Prove state.
     ///
     /// No-op in mock mode (proofs are generated synchronously).
@@ -428,86 +693,76 @@ where
                 )
                 .await?;
 
-            let request_details = self
-                .network_call_with_timeout(
+            // Check if current time exceeds deadline. If so, the proof has timed out.
+            let current_time =
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
+            let request_invalidated =
+                self.driver_config.driver_db_client.is_request_invalidated(request.id).await?;
+
+            if request_invalidated &&
+                (status.fulfillment_status() == FulfillmentStatus::Fulfilled as i32 ||
+                    status.fulfillment_status() == FulfillmentStatus::Unfulfillable as i32 ||
+                    current_time > status.deadline())
+            {
+                self.driver_config.driver_db_client.finish_invalidated_request(request.id).await?;
+                return Ok(());
+            }
+
+            if request_invalidated {
+                if network_prover.network_mode() == NetworkMode::Mainnet {
+                    let request_details = self
+                        .network_call_with_timeout(
+                            network_prover.get_proof_request(proof_request_id),
+                            "waiting for proof request details",
+                            &request,
+                        )
+                        .await?;
+
+                    if request_details.as_ref().is_some_and(|details| {
+                        details.fulfillment_status == FulfillmentStatus::Requested as i32
+                    }) {
+                        self.network_call_with_timeout(
+                            network_prover.cancel_request(proof_request_id),
+                            "cancelling invalidated proof request",
+                            &request,
+                        )
+                        .await?;
+                        self.driver_config
+                            .driver_db_client
+                            .finish_invalidated_request(request.id)
+                            .await?;
+                    }
+                }
+                return Ok(());
+            }
+
+            let request_details = async {
+                if status.fulfillment_status() == FulfillmentStatus::Fulfilled as i32 ||
+                    network_prover.network_mode() != NetworkMode::Mainnet
+                {
+                    return Ok(None);
+                }
+
+                self.network_call_with_timeout(
                     network_prover.get_proof_request(proof_request_id),
                     "waiting for proof request details",
                     &request,
                 )
-                .await?;
-
-            // Check if current time exceeds deadline. If so, the proof has timed out.
-            let current_time =
-                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs();
-
-            // Cancel the request in the network if the auction timeout is exceeded.
-            if let Some(request_details) = request_details {
-                let auction_deadline =
-                    request_details.created_at + self.requester_config.auction_timeout;
-                if network_prover.network_mode() == NetworkMode::Mainnet &&
-                    request_details.fulfillment_status == FulfillmentStatus::Requested as i32 &&
-                    current_time > auction_deadline
-                {
-                    // Cancel the request in the network.
-                    self.network_call_with_timeout(
-                        network_prover.cancel_request(proof_request_id),
-                        "cancelling proof request",
-                        &request,
-                    )
-                    .await?;
-
-                    // Mark the request as cancelled in the database.
-                    match self.proof_requester.handle_cancelled_request(request.clone()).await {
-                        Ok(_) => ValidityGauge::ProofRequestRetryCount.increment(1.0),
-                        Err(e) => {
-                            ValidityGauge::RetryErrorCount.increment(1.0);
-                            return Err(e);
-                        }
-                    }
-
-                    ValidityGauge::ProofRequestTimeoutErrorCount.increment(1.0);
-
-                    warn!(
-                        proof_id = request.id,
-                        start_block = request.start_block,
-                        end_block = request.end_block,
-                        req_type = ?request.req_type,
-                        auction_deadline,
-                        current_time,
-                        "Proof request auction deadline exceeded"
-                    );
-
-                    return Ok(());
-                }
-            }
-
-            if current_time > status.deadline() {
-                match self
-                    .proof_requester
-                    .handle_failed_request(request.clone(), status.execution_status())
-                    .await
-                {
-                    Ok(_) => ValidityGauge::ProofRequestRetryCount.increment(1.0),
-                    Err(e) => {
-                        ValidityGauge::RetryErrorCount.increment(1.0);
-                        return Err(e);
-                    }
-                }
-
-                ValidityGauge::ProofRequestTimeoutErrorCount.increment(1.0);
-
-                warn!(
-                    proof_id = request.id,
-                    start_block = request.start_block,
-                    end_block = request.end_block,
-                    req_type = ?request.req_type,
-                    deadline = status.deadline(),
-                    current_time,
-                    "Proof request timed out"
-                );
-
+                .await
+            };
+            let Some(request_details) = handle_terminal_proof_failure_before_request_details(
+                request.clone(),
+                &status,
+                current_time,
+                |request, execution_status| {
+                    self.proof_requester.handle_failed_request(request, execution_status)
+                },
+                request_details,
+            )
+            .await?
+            else {
                 return Ok(());
-            }
+            };
 
             // If the proof request has been fulfilled, update the request to status Complete and
             // add the proof bytes to the database.
@@ -528,10 +783,12 @@ where
                 };
 
                 // Add the completed proof to the database.
-                self.driver_config
+                let stored = self
+                    .driver_config
                     .driver_db_client
                     .update_proof_to_complete(request.id, &proof_bytes)
                     .await?;
+                anyhow::ensure!(stored, "Request {} could not transition to Complete", request.id);
                 // Update the prove_duration based on the current time and the proof_request_time.
                 self.driver_config.driver_db_client.update_prove_duration(request.id).await?;
 
@@ -584,40 +841,44 @@ where
                         );
                     }
                 }
-            } else if status.fulfillment_status() == FulfillmentStatus::Unfulfillable as i32 {
-                // Log failure of range and aggregation proofs.
-                match request.req_type {
-                    RequestType::Range => {
+                return Ok(());
+            }
+
+            if network_prover.network_mode() == NetworkMode::Mainnet {
+                if let Some(request_details) = request_details {
+                    let auction_deadline =
+                        request_details.created_at + self.requester_config.auction_timeout;
+                    if request_details.fulfillment_status == FulfillmentStatus::Requested as i32 &&
+                        current_time > auction_deadline
+                    {
+                        self.network_call_with_timeout(
+                            network_prover.cancel_request(proof_request_id),
+                            "cancelling proof request",
+                            &request,
+                        )
+                        .await?;
+
+                        match self.proof_requester.handle_cancelled_request(request.clone()).await {
+                            Ok(_) => ValidityGauge::ProofRequestRetryCount.increment(1.0),
+                            Err(e) => {
+                                ValidityGauge::RetryErrorCount.increment(1.0);
+                                return Err(e);
+                            }
+                        }
+
+                        ValidityGauge::ProofRequestTimeoutErrorCount.increment(1.0);
+
                         warn!(
                             proof_id = request.id,
                             start_block = request.start_block,
                             end_block = request.end_block,
-                            proof_request_time = ?request.proof_request_time,
-                            total_tx_fees = %request.total_tx_fees,
-                            total_transactions = request.total_nb_transactions,
-                            witnessgen_duration_s = request.witnessgen_duration,
-                            total_eth_gas_used = request.total_eth_gas_used,
-                            total_l1_fees = %request.total_l1_fees,
-                            execution_status = ?status.execution_status(),
-                            "Range proof request failed - unfulfillable"
-                        );
-                    }
-                    RequestType::Aggregation => {
-                        warn!(
-                            proof_id = request.id,
-                            start_block = request.start_block,
-                            end_block = request.end_block,
-                            witnessgen_duration_s = request.witnessgen_duration,
-                            execution_status = ?status.execution_status(),
-                            "Aggregation proof request failed - unfulfillable"
+                            req_type = ?request.req_type,
+                            auction_deadline,
+                            current_time,
+                            "Proof request auction deadline exceeded"
                         );
                     }
                 }
-
-                self.proof_requester
-                    .handle_failed_request(request, status.execution_status())
-                    .await?;
-                ValidityGauge::ProofRequestRetryCount.increment(1.0);
             }
         } else {
             // There should never be a proof request in Prove status without a proof request id.
@@ -670,6 +931,8 @@ where
             .cluster_config
             .as_ref()
             .context("cluster_config required for cluster proof polling")?;
+        let invalidated =
+            self.driver_config.driver_db_client.is_request_invalidated(request.id).await?;
 
         // 1. Wall-clock timeout check — runs before handle lookup/reconstruction so we skip
         //    unnecessary deserialization and lock acquisition for already-timed-out proofs.
@@ -686,7 +949,15 @@ where
                     "Cluster proof exceeded wall-clock timeout"
                 );
 
-                self.fail_cluster_request(&request).await?;
+                if invalidated {
+                    self.proof_requester.cluster_handles.lock().await.remove(&request.id);
+                    self.driver_config
+                        .driver_db_client
+                        .finish_invalidated_request(request.id)
+                        .await?;
+                } else {
+                    self.fail_cluster_request(&request).await?;
+                }
                 ValidityGauge::ProofRequestTimeoutErrorCount.increment(1.0);
 
                 return Ok(());
@@ -755,6 +1026,15 @@ where
         // 3. Poll the cluster for proof status.
         match cluster_poll_proof(cluster_config, proof_request).await {
             Ok(Some(results)) => {
+                if invalidated {
+                    self.proof_requester.cluster_handles.lock().await.remove(&request.id);
+                    self.driver_config
+                        .driver_db_client
+                        .finish_invalidated_request(request.id)
+                        .await?;
+                    return Ok(());
+                }
+
                 // Proof complete — convert and store.
                 let proof = SP1ProofWithPublicValues::from(results.proof);
 
@@ -764,10 +1044,12 @@ where
                     SP1Proof::Core(_) => return Err(anyhow!("Core proofs are not supported.")),
                 };
 
-                self.driver_config
+                let stored = self
+                    .driver_config
                     .driver_db_client
                     .update_proof_to_complete(request.id, &proof_bytes)
                     .await?;
+                anyhow::ensure!(stored, "Request {} could not transition to Complete", request.id);
                 self.driver_config.driver_db_client.update_prove_duration(request.id).await?;
 
                 let prove_duration_s = request
@@ -834,7 +1116,15 @@ where
                         "Cluster proof poll failed permanently"
                     );
 
-                    self.fail_cluster_request(&request).await?;
+                    if invalidated {
+                        self.proof_requester.cluster_handles.lock().await.remove(&request.id);
+                        self.driver_config
+                            .driver_db_client
+                            .finish_invalidated_request(request.id)
+                            .await?;
+                    } else {
+                        self.fail_cluster_request(&request).await?;
+                    }
                 } else {
                     warn!(
                         request_id = request.id,
@@ -899,12 +1189,10 @@ where
             .await?;
 
         // Get the highest block number of the completed range proofs.
-        let highest_proven_contiguous_block_number = match self
-            .get_highest_proven_contiguous_block(completed_range_proofs)?
-        {
-            Some(block) => block,
-            None => return Ok(()), /* No completed range proofs contiguous to the latest proposed
-                                    * block number, so no need to create an aggregation proof. */
+        let Some(highest_proven_contiguous_block_number) =
+            highest_contiguous_end(latest_proposed_block_number, &completed_range_proofs)?
+        else {
+            return Ok(());
         };
 
         // Get the submission interval from the contract.
@@ -929,7 +1217,7 @@ where
             let existing_request = self
                 .driver_config
                 .driver_db_client
-                .fetch_failed_agg_request_with_checkpointed_block_hash(
+                .fetch_reusable_agg_checkpoint(
                     latest_proposed_block_number,
                     highest_proven_contiguous_block_number,
                     &self.program_config.commitments,
@@ -1371,7 +1659,8 @@ where
         info!("Relayed aggregation proof. Transaction hash: {:?}", transaction_hash);
 
         // Update the request to status RELAYED.
-        self.driver_config
+        let recorded = self
+            .driver_config
             .driver_db_client
             .update_request_to_relayed(
                 completed_agg_proof.id,
@@ -1379,6 +1668,11 @@ where
                 self.contract_config.l2oo_address,
             )
             .await?;
+        anyhow::ensure!(
+            recorded,
+            "Aggregation request {} changed before relay persistence",
+            completed_agg_proof.id
+        );
 
         Ok(())
     }
@@ -1558,15 +1852,22 @@ where
         // tasks map, set it to status FAILED.
         for request in requests {
             if !self.tasks.lock().await.contains_key(&request.id) {
-                tracing::warn!(
-                    request_id = request.id,
-                    request_type = ?request.req_type,
-                    "Task is in the database in status Execution or WitnessGeneration but not in the tasks map, setting to status FAILED."
-                );
-                self.driver_config
-                    .driver_db_client
-                    .update_request_status(request.id, RequestStatus::Failed)
-                    .await?;
+                if self.driver_config.driver_db_client.is_request_invalidated(request.id).await? {
+                    self.driver_config
+                        .driver_db_client
+                        .finish_invalidated_request(request.id)
+                        .await?;
+                } else {
+                    tracing::warn!(
+                        request_id = request.id,
+                        request_type = ?request.req_type,
+                        "Task is in the database in status Execution or WitnessGeneration but not in the tasks map, setting to status FAILED."
+                    );
+                    self.driver_config
+                        .driver_db_client
+                        .update_request_status(request.id, RequestStatus::Failed)
+                        .await?;
+                }
             }
         }
 
@@ -1721,9 +2022,9 @@ where
             .await?;
 
         // Get the highest proven contiguous block.
-        let highest_block_number = self
-            .get_highest_proven_contiguous_block(completed_range_proofs)?
-            .map_or(latest_proposed_block_number, |block| block as u64);
+        let highest_block_number =
+            highest_contiguous_end(latest_proposed_block_number as i64, &completed_range_proofs)?
+                .map_or(latest_proposed_block_number, |block| block as u64);
 
         // Fetch request counts for different statuses
         let commitments = &self.program_config.commitments;
@@ -1888,20 +2189,24 @@ where
         // Get all proof statuses of all requests in the proving state.
         self.handle_proving_requests().await?;
 
-        // Add new range requests to the database.
-        self.add_new_ranges().await?;
+        let canonicality_ready = self.reconcile_completed_range_canonicality().await?;
 
-        // Create aggregation proofs based on the completed range proofs. Checkpoints the block hash
-        // associated with the aggregation proof in advance.
-        #[cfg(not(feature = "agglayer"))]
-        self.create_aggregation_proofs().await?;
+        if canonicality_ready {
+            // Add new range requests to the database.
+            self.add_new_ranges().await?;
 
-        // Request all unrequested proofs from the prover network.
-        self.request_queued_proofs().await?;
+            // Create aggregation proofs based on the completed range proofs. Checkpoints the block
+            // hash associated with the aggregation proof in advance.
+            #[cfg(not(feature = "agglayer"))]
+            self.create_aggregation_proofs().await?;
 
-        // Submit any aggregation proofs that are complete.
-        #[cfg(not(feature = "agglayer"))]
-        self.submit_agg_proofs().await?;
+            // Request all unrequested proofs from the prover network.
+            self.request_queued_proofs().await?;
+
+            // Submit any aggregation proofs that are complete.
+            #[cfg(not(feature = "agglayer"))]
+            self.submit_agg_proofs().await?;
+        }
 
         // Update the chain lock.
         self.proof_requester
@@ -1910,28 +2215,6 @@ where
             .await?;
 
         Ok(())
-    }
-
-    /// Get the highest block number at the end of the largest contiguous range of completed range
-    /// proofs. Returns None if there are no completed range proofs.
-    fn get_highest_proven_contiguous_block(
-        &self,
-        completed_range_proofs: Vec<(i64, i64)>,
-    ) -> Result<Option<i64>> {
-        if completed_range_proofs.is_empty() {
-            return Ok(None);
-        }
-
-        let mut current_end = completed_range_proofs[0].1;
-
-        for proof in completed_range_proofs.iter().skip(1) {
-            if proof.0 != current_end {
-                break;
-            }
-            current_end = proof.1;
-        }
-
-        Ok(Some(current_end))
     }
 
     /// Wrap a network prover call with timeout, logging, and metrics.
@@ -1994,7 +2277,16 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::select_checkpoint_block_number;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use sp1_sdk::network::proto::{
+        base_types, types::FulfillmentStatus, GetProofRequestStatusResponse,
+    };
+
+    use super::{
+        handle_terminal_proof_failure_before_request_details, highest_contiguous_end,
+        select_checkpoint_block_number, OPSuccinctRequest, RequestStatus, RequestType,
+    };
 
     #[test]
     fn checkpoint_falls_back_to_safe_when_no_batch_max() {
@@ -2010,5 +2302,71 @@ mod tests {
     #[test]
     fn checkpoint_floors_at_batch_max_when_above_safe() {
         assert_eq!(select_checkpoint_block_number(100, Some(150)), 150);
+    }
+
+    #[test]
+    fn contiguous_ranges_must_begin_at_expected_start() {
+        assert_eq!(highest_contiguous_end(100, &[(200, 300), (300, 400)]).unwrap(), None);
+        assert_eq!(
+            highest_contiguous_end(100, &[(100, 200), (200, 300), (400, 500)]).unwrap(),
+            Some(300)
+        );
+    }
+
+    #[test]
+    fn contiguous_ranges_reject_overlap() {
+        let error = highest_contiguous_end(100, &[(100, 200), (150, 250)]).unwrap_err();
+        assert!(error.to_string().contains("overlaps"));
+    }
+
+    #[test]
+    fn contiguous_ranges_reject_empty_range() {
+        let error = highest_contiguous_end(100, &[(100, 100)]).unwrap_err();
+        assert!(error.to_string().contains("empty or reversed"));
+    }
+
+    #[tokio::test]
+    async fn unfulfillable_status_is_handled_before_request_details() {
+        let request = OPSuccinctRequest {
+            id: 496,
+            status: RequestStatus::Prove,
+            req_type: RequestType::Range,
+            start_block: 2_433_375,
+            end_block: 2_433_675,
+            ..Default::default()
+        };
+        let status =
+            GetProofRequestStatusResponse::Base(base_types::GetProofRequestStatusResponse {
+                fulfillment_status: FulfillmentStatus::Unfulfillable as i32,
+                deadline: u64::MAX,
+                ..Default::default()
+            });
+        let failure_calls = AtomicUsize::new(0);
+        let details_requests = AtomicUsize::new(0);
+        let failure_calls_for_handler = &failure_calls;
+
+        let request_details = async {
+            details_requests.fetch_add(1, Ordering::Relaxed);
+            Err::<(), _>(anyhow::anyhow!("proof request details timed out"))
+        };
+        let result = handle_terminal_proof_failure_before_request_details(
+            request,
+            &status,
+            0,
+            |failed_request, _| async move {
+                assert_eq!(failed_request.id, 496);
+                assert_eq!(failed_request.start_block, 2_433_375);
+                assert_eq!(failed_request.end_block, 2_433_675);
+                failure_calls_for_handler.fetch_add(1, Ordering::Relaxed);
+                Ok(())
+            },
+            request_details,
+        )
+        .await
+        .unwrap();
+
+        assert!(result.is_none());
+        assert_eq!(failure_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(details_requests.load(Ordering::Relaxed), 0);
     }
 }

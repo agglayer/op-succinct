@@ -14,12 +14,11 @@ concurrency:
 jobs:
   build:
     name: Build Docker Images
-    runs-on:
-      - runs-on
-      - runner=64cpu-linux-x64
-      - run-id=${{ github.run_id }}
-      - disk=large
-      - spot=false
+    runs-on: ubuntu-latest-8-core
+
+    permissions:
+      packages: write
+      contents: read
 
     steps:
       - name: Checkout code
@@ -73,6 +72,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}/op-succinct-agglayer
           tags: |
             type=ref,event=tag
+            type=ref,event=branch
             type=sha
 
       - name: Docker meta for op-succinct-agglayer-altda
@@ -92,6 +92,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push op-succinct
+        if: false # fork-only: agglayer image is the only one we need
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -103,6 +104,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build and push op-succinct-altda
+        if: false # fork-only: agglayer image is the only one we need
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -114,6 +116,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build and push op-succinct-celestia
+        if: false # fork-only: agglayer image is the only one we need
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -125,6 +128,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build and push op-succinct-eigenda
+        if: false # fork-only: agglayer image is the only one we need
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -147,6 +151,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build and push op-succinct-agglayer-altda
+        if: false # fork-only: agglayer image is the only one we need
         uses: docker/build-push-action@v6
         with:
           context: .
